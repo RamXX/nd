@@ -1,0 +1,44 @@
+{
+  "name": "nd",
+  "description": "Vault-backed issue tracker for AI coding workflows. Manage tasks, discover work, track dependencies, and maintain persistent context with plain markdown files.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Ramiro Salas",
+    "url": "https://github.com/RamXX"
+  },
+  "repository": "https://github.com/RamXX/nd",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/RamXX/nd",
+  "keywords": [
+    "issue-tracker",
+    "task-management",
+    "ai-workflow",
+    "vault-backed",
+    "obsidian-compatible",
+    "markdown"
+  ],
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "nd prime 2>/dev/null || true"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "nd prime 2>/dev/null || true"
+          }
+        ]
+      }
+    ]
+  }
+}
