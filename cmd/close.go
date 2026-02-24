@@ -2,7 +2,10 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
+	"github.com/RamXX/nd/internal/format"
+	"github.com/RamXX/nd/internal/graph"
 	"github.com/RamXX/nd/internal/store"
 	"github.com/spf13/cobra"
 )
@@ -36,6 +39,20 @@ var closeCmd = &cobra.Command{
 			}
 			return fmt.Errorf("%d issue(s) failed to close", len(errors))
 		}
+
+		suggestNext, _ := cmd.Flags().GetBool("suggest-next")
+		if suggestNext && !quiet {
+			all, err := s.ListIssues(store.FilterOptions{Status: "!closed"})
+			if err == nil {
+				g := graph.Build(all)
+				ready := g.Ready()
+				if len(ready) > 0 {
+					fmt.Fprintf(os.Stderr, "\nNext ready issue:\n")
+					format.Short(os.Stderr, ready[0])
+				}
+			}
+		}
+
 		return nil
 	},
 }
@@ -43,5 +60,6 @@ var closeCmd = &cobra.Command{
 func init() {
 	closeCmd.Flags().String("reason", "", "close reason")
 	closeCmd.Flags().Bool("force", false, "close even if blocked")
+	closeCmd.Flags().Bool("suggest-next", false, "show top ready issue after closing")
 	rootCmd.AddCommand(closeCmd)
 }

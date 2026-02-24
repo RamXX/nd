@@ -3,8 +3,10 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/RamXX/nd/internal/format"
+	"github.com/RamXX/nd/internal/graph"
 	"github.com/RamXX/nd/internal/store"
 	"github.com/spf13/cobra"
 )
@@ -98,9 +100,94 @@ var depListCmd = &cobra.Command{
 	},
 }
 
+var depCyclesCmd = &cobra.Command{
+	Use:   "cycles",
+	Short: "Detect dependency cycles",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		s, err := store.Open(resolveVaultDir())
+		if err != nil {
+			return err
+		}
+		all, err := s.ListIssues(store.FilterOptions{})
+		if err != nil {
+			return err
+		}
+		g := graph.Build(all)
+		cycles := g.DetectCycles()
+		if len(cycles) == 0 {
+			fmt.Println("No dependency cycles found.")
+			return nil
+		}
+		for i, cycle := range cycles {
+			fmt.Printf("Cycle %d: %s\n", i+1, strings.Join(cycle, " -> "))
+		}
+		return nil
+	},
+}
+
+var depTreeCmd = &cobra.Command{
+	Use:   "tree <id>",
+	Short: "Show dependency tree for an issue",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		id := args[0]
+		s, err := store.Open(resolveVaultDir())
+		if err != nil {
+			return err
+		}
+		all, err := s.ListIssues(store.FilterOptions{})
+		if err != nil {
+			return err
+		}
+		g := graph.Build(all)
+		tree := g.DepTree(id)
+		if tree == nil {
+			return fmt.Errorf("issue %s not found", id)
+		}
+		printDepTree(os.Stdout, tree, "", true)
+		return nil
+	},
+}
+
+func printDepTree(w *os.File, node *graph.DepNode, prefix string, isLast bool) {
+	connector := "|- "
+	if isLast {
+		connector = "`- "
+	}
+	if prefix == "" {
+		connector = ""
+	}
+
+	marker := "[ ]"
+	switch node.Issue.Status {
+	case "closed":
+		marker = "[x]"
+	case "in_progress":
+		marker = "[>]"
+	case "blocked":
+		marker = "[!]"
+	}
+	fmt.Fprintf(w, "%s%s%s %s %s\n", prefix, connector, marker, node.Issue.ID, node.Issue.Title)
+
+	childPrefix := prefix
+	if prefix != "" {
+		if isLast {
+			childPrefix += "   "
+		} else {
+			childPrefix += "|  "
+		}
+	}
+
+	for i, child := range node.Children {
+		printDepTree(w, child, childPrefix, i == len(node.Children)-1)
+	}
+}
+
 func init() {
 	depCmd.AddCommand(depAddCmd)
 	depCmd.AddCommand(depRmCmd)
 	depCmd.AddCommand(depListCmd)
+	depCmd.AddCommand(depCyclesCmd)
+	depCmd.AddCommand(depTreeCmd)
 	rootCmd.AddCommand(depCmd)
 }

@@ -96,6 +96,34 @@ func TestBlockersOf(t *testing.T) {
 	}
 }
 
+func TestDepTree(t *testing.T) {
+	issues := []*model.Issue{
+		makeIssue("A", model.StatusOpen, []string{"B", "C"}, nil),
+		makeIssue("B", model.StatusOpen, []string{"D"}, []string{"A"}),
+		makeIssue("C", model.StatusOpen, nil, []string{"A"}),
+		makeIssue("D", model.StatusOpen, nil, []string{"B"}),
+	}
+	g := Build(issues)
+	tree := g.DepTree("A")
+	if tree == nil {
+		t.Fatal("DepTree returned nil")
+	}
+	if tree.Issue.ID != "A" {
+		t.Errorf("root = %s, want A", tree.Issue.ID)
+	}
+	if len(tree.Children) != 2 {
+		t.Errorf("A should have 2 children, got %d", len(tree.Children))
+	}
+	// Find B child and check it has D.
+	for _, child := range tree.Children {
+		if child.Issue.ID == "B" {
+			if len(child.Children) != 1 || child.Children[0].Issue.ID != "D" {
+				t.Errorf("B should have 1 child D, got %v", child.Children)
+			}
+		}
+	}
+}
+
 func TestStats(t *testing.T) {
 	issues := []*model.Issue{
 		makeIssue("A", model.StatusOpen, nil, nil),

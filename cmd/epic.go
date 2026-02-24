@@ -97,8 +97,44 @@ func printTree(w *os.File, node *graph.EpicNode, depth int) {
 	}
 }
 
+var epicCloseEligibleCmd = &cobra.Command{
+	Use:   "close-eligible",
+	Short: "List epics where all children are closed",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		s, err := store.Open(resolveVaultDir())
+		if err != nil {
+			return err
+		}
+
+		all, err := s.ListIssues(store.FilterOptions{})
+		if err != nil {
+			return err
+		}
+
+		g := graph.Build(all)
+		epics := g.Epics()
+
+		found := false
+		for _, epic := range epics {
+			if epic.Status == "closed" {
+				continue
+			}
+			summary := g.EpicStatus(epic.ID)
+			if summary != nil && summary.Total > 0 && summary.Closed == summary.Total {
+				fmt.Printf("%s %s (%d/%d closed)\n", epic.ID, epic.Title, summary.Closed, summary.Total)
+				found = true
+			}
+		}
+		if !found {
+			fmt.Println("No close-eligible epics found.")
+		}
+		return nil
+	},
+}
+
 func init() {
 	epicCmd.AddCommand(epicStatusCmd)
 	epicCmd.AddCommand(epicTreeCmd)
+	epicCmd.AddCommand(epicCloseEligibleCmd)
 	rootCmd.AddCommand(epicCmd)
 }

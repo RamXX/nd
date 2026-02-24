@@ -121,6 +121,38 @@ func (g *Graph) DetectCycles() [][]string {
 	return cycles
 }
 
+// DepNode represents an issue and its dependents in a dependency tree.
+type DepNode struct {
+	Issue    *model.Issue
+	Children []*DepNode
+}
+
+// DepTree builds a dependency tree rooted at the given issue ID.
+// Children are issues blocked by the root (i.e., forward edges).
+func (g *Graph) DepTree(id string) *DepNode {
+	issue, ok := g.nodes[id]
+	if !ok {
+		return nil
+	}
+	visited := make(map[string]bool)
+	return g.buildDepChildren(issue, visited)
+}
+
+func (g *Graph) buildDepChildren(issue *model.Issue, visited map[string]bool) *DepNode {
+	if visited[issue.ID] {
+		return &DepNode{Issue: issue}
+	}
+	visited[issue.ID] = true
+
+	node := &DepNode{Issue: issue}
+	for _, childID := range g.forward[issue.ID] {
+		if child, ok := g.nodes[childID]; ok {
+			node.Children = append(node.Children, g.buildDepChildren(child, visited))
+		}
+	}
+	return node
+}
+
 // Stats returns aggregate counts.
 type Stats struct {
 	Total      int
