@@ -1,17 +1,17 @@
-# nd -- Vault-backed Issue Tracker
+# nd - Vault-backed Issue Tracker
 
-**nd** is a Git-native issue tracker that stores issues as Obsidian-compatible markdown files with YAML frontmatter. No database server. No field size limits. Plain files you can read, grep, and version with git.
+**nd** (short for `node` as node in a graph) is a Git-native issue tracker that stores issues as Obsidian-compatible markdown files with YAML frontmatter. No database server. No field size limits. Plain files you can read, grep, and version with git.
 
 ## Why nd Exists
 
-We built [beads](https://github.com/steveyegge/beads) (`bd`) into the backbone of our AI-assisted development workflow. It worked -- persistent memory across compaction, dependency graphs, epic hierarchies. But its storage backend (Dolt SQL) became the weakest link:
+We built [beads](https://github.com/steveyegge/beads) (`bd`) into the backbone of our AI-assisted development workflow. It worked.Persistent memory across compaction, dependency graphs, epic hierarchies. We love beads. But extremely fast development cycles, breaking changes, and the latest adoption of a new storage backend (Dolt SQL) was too much for us. It became the weakest link:
 
-- **65KB TEXT field limit.** We routinely store 80-160KB in issue descriptions, design notes, and acceptance criteria. Dolt silently truncates at 65KB. Data loss you don't notice until you need it.
+- **65KB TEXT field limit.** We routinely store 80-160KB in issue descriptions, design notes, and acceptance criteria. Dolt silently truncates at 65KB. Data loss you don't notice until you need it. We believe in agents that are single-use, so beads carry all context. This limitation was too much.
 - **Running server required.** `dolt sql-server` must be running or bd falls back to embedded mode with different behavior. Configuration confusion is constant.
 - **Migration headaches.** Schema migrations, repo fingerprint mismatches, shared server database confusion, JSONL import gaps. Every other session starts with `bd doctor --fix`.
 - **Not inspectable.** Issues live in a binary database. You can't `cat` an issue, `grep` across your backlog, or diff changes in a PR review.
 
-nd solves all of this by storing issues as plain markdown files in a directory. The storage layer is [vlt](https://github.com/RamXX/vlt), an Obsidian vault management library, used as an importable Go library. vlt handles file I/O, frontmatter parsing, search, file locking, and content patching -- nd adds issue-tracker semantics on top.
+`nd` solves all of this by storing issues as plain markdown files in a directory. The storage layer is [vlt](https://github.com/RamXX/vlt), an Obsidian-compliant vault management library, used as an importable Go library. vlt handles file I/O, frontmatter parsing, search, file locking, and content patching. `nd` adds issue-tracker semantics on top.
 
 ### What vlt Provides
 
