@@ -178,6 +178,39 @@ func writeStringList(sb *strings.Builder, key string, vals []string) {
 	sb.WriteString(fmt.Sprintf("%s: [%s]\n", key, strings.Join(vals, ", ")))
 }
 
+// DeleteIssue removes an issue, cleaning up all dependency references first.
+// Returns the list of modified issue IDs (whose deps were cleaned up).
+func (s *Store) DeleteIssue(id string, permanent bool) ([]string, error) {
+	issue, err := s.ReadIssue(id)
+	if err != nil {
+		return nil, fmt.Errorf("issue %s: %w", id, err)
+	}
+
+	var modified []string
+
+	// Clean up blocked_by references (issues that block this one).
+	for _, depID := range issue.BlockedBy {
+		if err := s.RemoveDependency(id, depID); err == nil {
+			modified = append(modified, depID)
+		}
+	}
+
+	// Clean up blocks references (issues this one blocks).
+	for _, blockedID := range issue.Blocks {
+		if err := s.RemoveDependency(blockedID, id); err == nil {
+			modified = append(modified, blockedID)
+		}
+	}
+
+	// Delete the file.
+	path := fmt.Sprintf("issues/%s.md", id)
+	if _, err := s.vault.Delete("", path, permanent); err != nil {
+		return modified, fmt.Errorf("delete %s: %w", id, err)
+	}
+
+	return modified, nil
+}
+
 // deserializeIssue parses frontmatter + body markdown into an Issue.
 func deserializeIssue(content string) (*model.Issue, error) {
 	yamlStr, bodyStart, found := vlt.ExtractFrontmatter(content)

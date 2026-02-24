@@ -316,6 +316,51 @@ func TestListFilterParent(t *testing.T) {
 	}
 }
 
+func TestDeleteIssue(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Init(dir, "TST", "tester")
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	a, err := s.CreateIssue("Issue A", "", "task", 2, "", nil, "")
+	if err != nil {
+		t.Fatalf("create A: %v", err)
+	}
+	b, err := s.CreateIssue("Issue B", "", "task", 2, "", nil, "")
+	if err != nil {
+		t.Fatalf("create B: %v", err)
+	}
+
+	// Add dep: B depends on A.
+	if err := s.AddDependency(b.ID, a.ID); err != nil {
+		t.Fatalf("add dep: %v", err)
+	}
+
+	// Delete A (soft) -- should clean up B's blocked_by.
+	modified, err := s.DeleteIssue(a.ID, false)
+	if err != nil {
+		t.Fatalf("delete A: %v", err)
+	}
+	if len(modified) == 0 {
+		t.Error("expected modified issues from dep cleanup")
+	}
+
+	// A should no longer exist.
+	if s.IssueExists(a.ID) {
+		t.Error("deleted issue should not exist")
+	}
+
+	// B should have no blockers.
+	bRead, err := s.ReadIssue(b.ID)
+	if err != nil {
+		t.Fatalf("read B: %v", err)
+	}
+	if len(bRead.BlockedBy) != 0 {
+		t.Errorf("B should have no blockers after A deleted: %v", bRead.BlockedBy)
+	}
+}
+
 func TestLinksMigration(t *testing.T) {
 	dir := t.TempDir()
 	s, err := Init(dir, "TST", "tester")
