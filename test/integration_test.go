@@ -1,6 +1,7 @@
 package test
 
 import (
+	"sort"
 	"strings"
 	"testing"
 
@@ -353,6 +354,140 @@ func TestMigrateWorkflow(t *testing.T) {
 	blockedIDs := idsOf(blocked)
 	if !containsStr(blockedIDs, child2.ID) {
 		t.Errorf("child2 should be blocked: %v", blockedIDs)
+	}
+}
+
+func TestMigrateTrajectoryInference(t *testing.T) {
+	dir := t.TempDir()
+
+	s, err := store.Init(dir, "TRJ", "traj-tester")
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	// Create an epic with 3 children, each closed at different times.
+	epic, _ := s.CreateIssueWithID("TRJ-epic1", "Auth Epic", "Auth work", "epic", 1, "", nil, "")
+	ch1, _ := s.CreateIssueWithID("TRJ-ch01", "Design", "Design auth", "task", 1, "", nil, "")
+	ch2, _ := s.CreateIssueWithID("TRJ-ch02", "Implement", "Build auth", "task", 1, "", nil, "")
+	ch3, _ := s.CreateIssueWithID("TRJ-ch03", "Test", "Test auth", "task", 1, "", nil, "")
+
+	// Wire parent-child.
+	_ = s.SetParent(ch1.ID, epic.ID)
+	_ = s.SetParent(ch2.ID, epic.ID)
+	_ = s.SetParent(ch3.ID, epic.ID)
+
+	// Close children with ascending timestamps.
+	_ = s.CloseIssue(ch1.ID, "done")
+	_ = s.UpdateField(ch1.ID, "closed_at", "2026-01-10T10:00:00Z")
+	_ = s.CloseIssue(ch2.ID, "done")
+	_ = s.UpdateField(ch2.ID, "closed_at", "2026-01-11T10:00:00Z")
+	_ = s.CloseIssue(ch3.ID, "done")
+	_ = s.UpdateField(ch3.ID, "closed_at", "2026-01-12T10:00:00Z")
+	_ = s.CloseIssue(epic.ID, "all done")
+	_ = s.UpdateField(epic.ID, "closed_at", "2026-01-12T12:00:00Z")
+
+	// Create two related orphans (no parent), both closed.
+	orphA, _ := s.CreateIssueWithID("TRJ-orpA", "Research X", "Investigate X", "task", 2, "", nil, "")
+	orphB, _ := s.CreateIssueWithID("TRJ-orpB", "Research Y", "Investigate Y", "task", 2, "", nil, "")
+	_ = s.AddRelated(orphA.ID, orphB.ID)
+	_ = s.CloseIssue(orphA.ID, "done")
+	_ = s.UpdateField(orphA.ID, "closed_at", "2026-01-08T10:00:00Z")
+	_ = s.CloseIssue(orphB.ID, "done")
+	_ = s.UpdateField(orphB.ID, "closed_at", "2026-01-09T10:00:00Z")
+
+	// Simulate Pass 3 logic: sibling chains.
+	parentIDs := map[string]bool{epic.ID: true}
+	followsWired := 0
+
+	// 3a: Sibling chains.
+	for pid := range parentIDs {
+		children, err := s.ListIssues(store.FilterOptions{Parent: pid, Status: "closed"})
+		if err != nil || len(children) < 2 {
+			continue
+		}
+		sort.Slice(children, func(i, j int) bool {
+			return children[i].ClosedAt < children[j].ClosedAt
+		})
+		for i := 1; i < len(children); i++ {
+			pred := children[i-1]
+			succ := children[i]
+			if pred.ClosedAt == "" || succ.ClosedAt == "" {
+				continue
+			}
+			if err := s.AddFollows(succ.ID, pred.ID); err == nil {
+				followsWired++
+			}
+		}
+	}
+
+	// 3b: Related orphan chains.
+	type relatedPair struct{ a, b string }
+	closedOrphans := map[string]*model.Issue{}
+	{
+		orphans, _ := s.ListIssues(store.FilterOptions{NoParent: true, Status: "closed"})
+		for _, o := range orphans {
+			closedOrphans[o.ID] = o
+		}
+	}
+	var relatedPairs []relatedPair
+	seen := map[relatedPair]bool{}
+	for _, o := range closedOrphans {
+		for _, rid := range o.Related {
+			if _, ok := closedOrphans[rid]; !ok {
+				continue
+			}
+			p := relatedPair{o.ID, rid}
+			pr := relatedPair{rid, o.ID}
+			if seen[p] || seen[pr] {
+				continue
+			}
+			seen[p] = true
+			relatedPairs = append(relatedPairs, p)
+		}
+	}
+	for _, rp := range relatedPairs {
+		a, b := closedOrphans[rp.a], closedOrphans[rp.b]
+		if a.ClosedAt == "" || b.ClosedAt == "" {
+			continue
+		}
+		if a.ClosedAt <= b.ClosedAt {
+			if err := s.AddFollows(b.ID, a.ID); err == nil {
+				followsWired++
+			}
+		} else {
+			if err := s.AddFollows(a.ID, b.ID); err == nil {
+				followsWired++
+			}
+		}
+	}
+
+	// Verify sibling chain: ch1 -> ch2 -> ch3.
+	ch2Read, _ := s.ReadIssue(ch2.ID)
+	if !containsStr(ch2Read.Follows, ch1.ID) {
+		t.Errorf("ch2 should follow ch1; follows=%v", ch2Read.Follows)
+	}
+	ch3Read, _ := s.ReadIssue(ch3.ID)
+	if !containsStr(ch3Read.Follows, ch2.ID) {
+		t.Errorf("ch3 should follow ch2; follows=%v", ch3Read.Follows)
+	}
+	ch1Read, _ := s.ReadIssue(ch1.ID)
+	if !containsStr(ch1Read.LedTo, ch2.ID) {
+		t.Errorf("ch1 should have led_to ch2; led_to=%v", ch1Read.LedTo)
+	}
+
+	// Verify related orphan chain: orphA -> orphB.
+	orphBRead, _ := s.ReadIssue(orphB.ID)
+	if !containsStr(orphBRead.Follows, orphA.ID) {
+		t.Errorf("orphB should follow orphA; follows=%v", orphBRead.Follows)
+	}
+	orphARead, _ := s.ReadIssue(orphA.ID)
+	if !containsStr(orphARead.LedTo, orphB.ID) {
+		t.Errorf("orphA should have led_to orphB; led_to=%v", orphARead.LedTo)
+	}
+
+	// Total: 2 sibling links + 1 related link = 3.
+	if followsWired != 3 {
+		t.Errorf("expected 3 follows wired, got %d", followsWired)
 	}
 }
 

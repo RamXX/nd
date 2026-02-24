@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/RamXX/nd/internal/model"
@@ -361,6 +362,111 @@ var migrateCmd = &cobra.Command{
 			}
 		}
 
+		// Pass 3: Infer follows/led_to chains from closed_at timestamps.
+		followsWired := 0
+
+		// 3a: Sibling chains under shared parents.
+		for pid := range parentIDs {
+			children, err := s.ListIssues(store.FilterOptions{Parent: pid, Status: "closed"})
+			if err != nil || len(children) < 2 {
+				continue
+			}
+			sort.Slice(children, func(i, j int) bool {
+				return children[i].ClosedAt < children[j].ClosedAt
+			})
+			for i := 1; i < len(children); i++ {
+				pred := children[i-1]
+				succ := children[i]
+				if pred.ClosedAt == "" || succ.ClosedAt == "" {
+					continue
+				}
+				if err := s.AddFollows(succ.ID, pred.ID); err == nil {
+					followsWired++
+				}
+			}
+		}
+
+		// 3b: Top-level orphan chains via related links.
+		// Build a map of related pairs among closed, parentless issues.
+		type relatedPair struct{ a, b string }
+		var relatedPairs []relatedPair
+		closedOrphans := map[string]*model.Issue{}
+		{
+			orphans, _ := s.ListIssues(store.FilterOptions{NoParent: true, Status: "closed"})
+			for _, o := range orphans {
+				closedOrphans[o.ID] = o
+			}
+			seen := map[relatedPair]bool{}
+			for _, o := range orphans {
+				for _, rid := range o.Related {
+					if _, ok := closedOrphans[rid]; !ok {
+						continue
+					}
+					p := relatedPair{o.ID, rid}
+					pr := relatedPair{rid, o.ID}
+					if seen[p] || seen[pr] {
+						continue
+					}
+					seen[p] = true
+					relatedPairs = append(relatedPairs, p)
+				}
+			}
+		}
+		for _, rp := range relatedPairs {
+			a, b := closedOrphans[rp.a], closedOrphans[rp.b]
+			if a.ClosedAt == "" || b.ClosedAt == "" {
+				continue
+			}
+			if a.ClosedAt <= b.ClosedAt {
+				if err := s.AddFollows(b.ID, a.ID); err == nil {
+					followsWired++
+				}
+			} else {
+				if err := s.AddFollows(a.ID, b.ID); err == nil {
+					followsWired++
+				}
+			}
+		}
+
+		// 3c: Epic-to-epic chains by last-child closed_at.
+		type epicClose struct {
+			id       string
+			closedAt string
+		}
+		var epicCloses []epicClose
+		for pid := range parentIDs {
+			ep, err := s.ReadIssue(pid)
+			if err != nil || ep.Status.String() != "closed" {
+				continue
+			}
+			children, _ := s.ListIssues(store.FilterOptions{Parent: pid, Status: "closed"})
+			if len(children) == 0 {
+				if ep.ClosedAt != "" {
+					epicCloses = append(epicCloses, epicClose{pid, ep.ClosedAt})
+				}
+				continue
+			}
+			lastClose := ""
+			for _, c := range children {
+				if c.ClosedAt > lastClose {
+					lastClose = c.ClosedAt
+				}
+			}
+			if lastClose != "" {
+				epicCloses = append(epicCloses, epicClose{pid, lastClose})
+			}
+		}
+		if len(epicCloses) > 1 {
+			sort.Slice(epicCloses, func(i, j int) bool {
+				return epicCloses[i].closedAt < epicCloses[j].closedAt
+			})
+			for i := 1; i < len(epicCloses); i++ {
+				if err := s.AddFollows(epicCloses[i].id, epicCloses[i-1].id); err == nil {
+					followsWired++
+				}
+			}
+		}
+
 		// Promote parents to epic if not already.
 		promoted := 0
 		for pid := range parentIDs {
@@ -384,6 +490,9 @@ var migrateCmd = &cobra.Command{
 		}
 		if promoted > 0 {
 			fmt.Printf("  Promoted %d issues to epic\n", promoted)
+		}
+		if followsWired > 0 {
+			fmt.Printf("  Trajectory: %d follows/led_to links inferred from timestamps\n", followsWired)
 		}
 		return nil
 	},
