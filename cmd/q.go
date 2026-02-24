@@ -2,17 +2,16 @@ package cmd
 
 import (
 	"fmt"
-	"io"
-	"os"
 	"strings"
 
 	"github.com/RamXX/nd/internal/store"
 	"github.com/spf13/cobra"
 )
 
-var createCmd = &cobra.Command{
-	Use:   "create [title]",
-	Short: "Create a new issue",
+var qCmd = &cobra.Command{
+	Use:   "q [title]",
+	Short: "Quick capture -- create issue, print only ID",
+	Long:  "Create an issue and print only its ID to stdout, enabling ISSUE=$(nd q \"title\").",
 	Args:  cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		title := strings.Join(args, " ")
@@ -59,8 +58,6 @@ var createCmd = &cobra.Command{
 		if jsonOut {
 			fmt.Printf(`{"id":"%s"}`, issue.ID)
 			fmt.Println()
-		} else if !quiet {
-			fmt.Printf("Created %s: %s\n", issue.ID, issue.Title)
 		} else {
 			fmt.Println(issue.ID)
 		}
@@ -69,27 +66,12 @@ var createCmd = &cobra.Command{
 }
 
 func init() {
-	createCmd.Flags().StringP("type", "t", "task", "issue type (bug, feature, task, epic, chore, decision)")
-	createCmd.Flags().IntP("priority", "p", 2, "priority 0-4 (0=critical)")
-	createCmd.Flags().String("assignee", "", "assignee")
-	createCmd.Flags().String("labels", "", "comma-separated labels")
-	createCmd.Flags().StringP("description", "d", "", "issue description")
-	createCmd.Flags().String("parent", "", "parent issue ID")
-	createCmd.Flags().String("body-file", "", "read description from file (- for stdin)")
-	rootCmd.AddCommand(createCmd)
-}
-
-// readBodyFile reads content from a file path or stdin (when path is "-").
-func readBodyFile(path string) (string, error) {
-	var data []byte
-	var err error
-	if path == "-" {
-		data, err = io.ReadAll(os.Stdin)
-	} else {
-		data, err = os.ReadFile(path)
-	}
-	if err != nil {
-		return "", fmt.Errorf("read body file: %w", err)
-	}
-	return strings.TrimRight(string(data), "\n"), nil
+	qCmd.Flags().StringP("type", "t", "task", "issue type")
+	qCmd.Flags().IntP("priority", "p", 2, "priority 0-4")
+	qCmd.Flags().String("assignee", "", "assignee")
+	qCmd.Flags().String("labels", "", "comma-separated labels")
+	qCmd.Flags().StringP("description", "d", "", "issue description")
+	qCmd.Flags().String("parent", "", "parent issue ID")
+	qCmd.Flags().String("body-file", "", "read description from file (- for stdin)")
+	rootCmd.AddCommand(qCmd)
 }
