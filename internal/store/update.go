@@ -2,6 +2,7 @@ package store
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/RamXX/nd/internal/enforce"
@@ -95,6 +96,70 @@ func (s *Store) UpdateBody(id, body string) error {
 	}
 	hash := enforce.ComputeContentHash(body)
 	if err := s.vault.PropertySet(id, "content_hash", fmt.Sprintf("%q", hash)); err != nil {
+		return err
+	}
+	return s.touchUpdatedAt(id)
+}
+
+// UpdateLinksSection rebuilds the ## Links section from frontmatter relationships.
+func (s *Store) UpdateLinksSection(id string) error {
+	issue, err := s.ReadIssue(id)
+	if err != nil {
+		return err
+	}
+
+	content := buildLinksSection(issue)
+
+	// Check if body already has a ## Links section.
+	if !strings.Contains(issue.Body, "\n## Links\n") {
+		// Insert ## Links before ## Comments.
+		if idx := strings.Index(issue.Body, "\n## Comments\n"); idx >= 0 {
+			newBody := issue.Body[:idx] + "\n## Links\n\n" + issue.Body[idx:]
+			if err := s.vault.Write(id, newBody, false); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Patch the Links section content.
+	if err := s.vault.Patch(id, vlt.PatchOptions{
+		Heading:    "## Links",
+		Content:    content,
+		Timestamps: false,
+	}); err != nil {
+		return err
+	}
+
+	// Recompute content hash after Links section update.
+	updated, err := s.ReadIssue(id)
+	if err != nil {
+		return err
+	}
+	hash := enforce.ComputeContentHash(updated.Body)
+	return s.vault.PropertySet(id, "content_hash", fmt.Sprintf("%q", hash))
+}
+
+// SetParent sets the parent of an issue and updates the Links section.
+func (s *Store) SetParent(id, parentID string) error {
+	if parentID == "" {
+		if err := s.vault.PropertyRemove(id, "parent"); err != nil {
+			return err
+		}
+	} else {
+		if err := s.vault.PropertySet(id, "parent", parentID); err != nil {
+			return err
+		}
+	}
+	if err := s.touchUpdatedAt(id); err != nil {
+		return err
+	}
+	return s.UpdateLinksSection(id)
+}
+
+// RefreshAfterEdit recomputes the content hash and updates the Links section
+// after a manual edit. Call this after an external editor modifies the file.
+func (s *Store) RefreshAfterEdit(id string) error {
+	if err := s.UpdateLinksSection(id); err != nil {
 		return err
 	}
 	return s.touchUpdatedAt(id)

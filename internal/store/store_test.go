@@ -2,7 +2,10 @@ package store
 
 import (
 	"os"
+	"strings"
 	"testing"
+
+	"github.com/RamXX/nd/internal/model"
 )
 
 func TestInitAndOpen(t *testing.T) {
@@ -149,5 +152,156 @@ func TestIssueExists(t *testing.T) {
 	}
 	if !s.IssueExists(issue.ID) {
 		t.Error("created issue should exist")
+	}
+}
+
+func TestBuildLinksSection(t *testing.T) {
+	tests := []struct {
+		name   string
+		issue  *model.Issue
+		want   []string
+		empty  bool
+	}{
+		{
+			name:  "no relationships",
+			issue: &model.Issue{ID: "TST-0001"},
+			empty: true,
+		},
+		{
+			name:  "parent only",
+			issue: &model.Issue{ID: "TST-0001", Parent: "TST-epic"},
+			want:  []string{"- Parent: [[TST-epic]]"},
+		},
+		{
+			name:  "blocks only",
+			issue: &model.Issue{ID: "TST-0001", Blocks: []string{"TST-b1", "TST-b2"}},
+			want:  []string{"- Blocks: [[TST-b1]], [[TST-b2]]"},
+		},
+		{
+			name:  "blocked_by only",
+			issue: &model.Issue{ID: "TST-0001", BlockedBy: []string{"TST-c1"}},
+			want:  []string{"- Blocked by: [[TST-c1]]"},
+		},
+		{
+			name:  "related only",
+			issue: &model.Issue{ID: "TST-0001", Related: []string{"TST-r1", "TST-r2"}},
+			want:  []string{"- Related: [[TST-r1]], [[TST-r2]]"},
+		},
+		{
+			name: "all relationships",
+			issue: &model.Issue{
+				ID:        "TST-0001",
+				Parent:    "TST-epic",
+				Blocks:    []string{"TST-b1"},
+				BlockedBy: []string{"TST-c1"},
+				Related:   []string{"TST-r1"},
+			},
+			want: []string{
+				"- Parent: [[TST-epic]]",
+				"- Blocks: [[TST-b1]]",
+				"- Blocked by: [[TST-c1]]",
+				"- Related: [[TST-r1]]",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := buildLinksSection(tt.issue)
+			if tt.empty {
+				if got != "" {
+					t.Errorf("expected empty, got %q", got)
+				}
+				return
+			}
+			for _, w := range tt.want {
+				if !strings.Contains(got, w) {
+					t.Errorf("missing %q in:\n%s", w, got)
+				}
+			}
+		})
+	}
+}
+
+func TestUpdateLinksSection(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Init(dir, "TST", "tester")
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	// Create two issues.
+	a, err := s.CreateIssue("Issue A", "", "task", 2, "", nil, "")
+	if err != nil {
+		t.Fatalf("create A: %v", err)
+	}
+	b, err := s.CreateIssue("Issue B", "", "task", 2, "", nil, "")
+	if err != nil {
+		t.Fatalf("create B: %v", err)
+	}
+
+	// Add dependency: B depends on A.
+	if err := s.AddDependency(b.ID, a.ID); err != nil {
+		t.Fatalf("add dep: %v", err)
+	}
+
+	// Read B and check for wikilinks.
+	bRead, err := s.ReadIssue(b.ID)
+	if err != nil {
+		t.Fatalf("read B: %v", err)
+	}
+	if !strings.Contains(bRead.Body, "[["+a.ID+"]]") {
+		t.Errorf("B body should contain wikilink to A:\n%s", bRead.Body)
+	}
+
+	// Read A and check for wikilinks.
+	aRead, err := s.ReadIssue(a.ID)
+	if err != nil {
+		t.Fatalf("read A: %v", err)
+	}
+	if !strings.Contains(aRead.Body, "[["+b.ID+"]]") {
+		t.Errorf("A body should contain wikilink to B:\n%s", aRead.Body)
+	}
+
+	// Remove dependency and verify wikilinks disappear.
+	if err := s.RemoveDependency(b.ID, a.ID); err != nil {
+		t.Fatalf("remove dep: %v", err)
+	}
+	bAfter, _ := s.ReadIssue(b.ID)
+	if strings.Contains(bAfter.Body, "[["+a.ID+"]]") {
+		t.Errorf("B body should not contain wikilink to A after removal:\n%s", bAfter.Body)
+	}
+}
+
+func TestLinksMigration(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Init(dir, "TST", "tester")
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	// Create issue and verify it has ## Links section by default.
+	issue, err := s.CreateIssue("Test issue", "some desc", "task", 2, "", nil, "")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	read, err := s.ReadIssue(issue.ID)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if !strings.Contains(read.Body, "\n## Links\n") {
+		t.Errorf("new issue should have ## Links section:\n%s", read.Body)
+	}
+
+	// Call UpdateLinksSection on issue with no relationships (should be idempotent).
+	if err := s.UpdateLinksSection(issue.ID); err != nil {
+		t.Fatalf("UpdateLinksSection: %v", err)
+	}
+
+	// Verify body still has ## Links.
+	read2, _ := s.ReadIssue(issue.ID)
+	if !strings.Contains(read2.Body, "\n## Links\n") {
+		t.Errorf("after UpdateLinksSection, ## Links should still exist:\n%s", read2.Body)
 	}
 }

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/RamXX/nd/internal/enforce"
 	"github.com/RamXX/nd/internal/store"
@@ -122,6 +123,21 @@ var doctorCmd = &cobra.Command{
 			if err := enforce.ValidateDeps(issue); err != nil {
 				fmt.Printf("[VALID] %s: %v\n", issue.ID, err)
 				problems++
+			}
+		}
+
+		// Check 5: Links section integrity.
+		for _, issue := range issues {
+			if !strings.Contains(issue.Body, "\n## Links\n") {
+				fmt.Printf("[LINKS] %s: missing ## Links section\n", issue.ID)
+				problems++
+				if fix {
+					if err := s.UpdateLinksSection(issue.ID); err != nil {
+						errorf("fix links %s: %v", issue.ID, err)
+					} else {
+						fmt.Printf("  -> fixed\n")
+					}
+				}
 			}
 		}
 

@@ -62,6 +62,14 @@ func TestFullWorkflow(t *testing.T) {
 		t.Errorf("taskB should be blocked by taskA: blocked_by=%v", taskBRead.BlockedBy)
 	}
 
+	// Verify wikilinks appear in body after AddDependency.
+	if !strings.Contains(taskBRead.Body, "[["+taskA.ID+"]]") {
+		t.Errorf("taskB body should contain wikilink to taskA after AddDependency")
+	}
+	if !strings.Contains(taskARead.Body, "[["+taskB.ID+"]]") {
+		t.Errorf("taskA body should contain wikilink to taskB after AddDependency")
+	}
+
 	// 4. Build graph and test ready/blocked.
 	all, err := s.ListIssues(store.FilterOptions{})
 	if err != nil {
@@ -156,6 +164,11 @@ func TestFullWorkflow(t *testing.T) {
 	taskBAfter, _ := s.ReadIssue(taskB.ID)
 	if len(taskBAfter.BlockedBy) != 0 {
 		t.Errorf("taskB should have no blockers after removal: %v", taskBAfter.BlockedBy)
+	}
+
+	// Verify wikilinks disappear after RemoveDependency.
+	if strings.Contains(taskBAfter.Body, "[["+taskA.ID+"]]") {
+		t.Errorf("taskB body should not contain wikilink to taskA after RemoveDependency")
 	}
 
 	// 12. Update fields.

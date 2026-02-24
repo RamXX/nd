@@ -62,6 +62,12 @@ func (s *Store) createIssue(id, title, description, issueType string, priority i
 	}
 
 	issue.FilePath = path
+
+	// Populate Links section if the issue has relationships at creation time.
+	if issue.Parent != "" || len(issue.Blocks) > 0 || len(issue.BlockedBy) > 0 || len(issue.Related) > 0 {
+		_ = s.UpdateLinksSection(id)
+	}
+
 	return issue, nil
 }
 
@@ -89,7 +95,39 @@ func buildBody(description string) string {
 	sb.WriteString("\n## Acceptance Criteria\n\n")
 	sb.WriteString("\n## Design\n\n")
 	sb.WriteString("\n## Notes\n\n")
+	sb.WriteString("\n## Links\n\n")
 	sb.WriteString("\n## Comments\n")
+	return sb.String()
+}
+
+// buildLinksSection generates wikilink lines from an issue's relationship fields.
+// Returns empty string when no relationships exist.
+func buildLinksSection(issue *model.Issue) string {
+	var sb strings.Builder
+	if issue.Parent != "" {
+		sb.WriteString(fmt.Sprintf("- Parent: [[%s]]\n", issue.Parent))
+	}
+	if len(issue.Blocks) > 0 {
+		links := make([]string, len(issue.Blocks))
+		for i, b := range issue.Blocks {
+			links[i] = fmt.Sprintf("[[%s]]", b)
+		}
+		sb.WriteString(fmt.Sprintf("- Blocks: %s\n", strings.Join(links, ", ")))
+	}
+	if len(issue.BlockedBy) > 0 {
+		links := make([]string, len(issue.BlockedBy))
+		for i, b := range issue.BlockedBy {
+			links[i] = fmt.Sprintf("[[%s]]", b)
+		}
+		sb.WriteString(fmt.Sprintf("- Blocked by: %s\n", strings.Join(links, ", ")))
+	}
+	if len(issue.Related) > 0 {
+		links := make([]string, len(issue.Related))
+		for i, r := range issue.Related {
+			links[i] = fmt.Sprintf("[[%s]]", r)
+		}
+		sb.WriteString(fmt.Sprintf("- Related: %s\n", strings.Join(links, ", ")))
+	}
 	return sb.String()
 }
 

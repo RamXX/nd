@@ -38,6 +38,10 @@ func (s *Store) AddDependency(issueID, depID string) error {
 		}
 	}
 
+	// Update Links sections for both sides.
+	_ = s.UpdateLinksSection(issueID)
+	_ = s.UpdateLinksSection(depID)
+
 	return nil
 }
 
@@ -63,6 +67,10 @@ func (s *Store) RemoveDependency(issueID, depID string) error {
 	if err := s.setListProperty(depID, "blocks", newBlocks); err != nil {
 		return err
 	}
+
+	// Update Links sections for both sides.
+	_ = s.UpdateLinksSection(issueID)
+	_ = s.UpdateLinksSection(depID)
 
 	return nil
 }
