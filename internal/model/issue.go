@@ -144,25 +144,25 @@ func (t IssueType) String() string { return string(t) }
 
 // Issue is the core data model for nd.
 type Issue struct {
-	ID          string    `yaml:"id"`
-	Title       string    `yaml:"title"`
-	Status      Status    `yaml:"status"`
-	Priority    Priority  `yaml:"priority"`
-	Type        IssueType `yaml:"type"`
-	Assignee    string    `yaml:"assignee,omitempty"`
-	Labels      []string  `yaml:"labels,omitempty"`
-	Parent      string    `yaml:"parent,omitempty"`
-	Blocks         []string  `yaml:"blocks,omitempty"`
-	BlockedBy      []string  `yaml:"blocked_by,omitempty"`
-	WasBlockedBy   []string  `yaml:"was_blocked_by,omitempty"`
-	Related        []string  `yaml:"related,omitempty"`
-	CreatedAt   time.Time `yaml:"created_at"`
-	CreatedBy   string    `yaml:"created_by"`
-	UpdatedAt   time.Time `yaml:"updated_at"`
-	DeferUntil  string    `yaml:"defer_until,omitempty"`
-	ClosedAt    string    `yaml:"closed_at,omitempty"`
-	CloseReason string    `yaml:"close_reason,omitempty"`
-	ContentHash string    `yaml:"content_hash"`
+	ID           string    `yaml:"id"`
+	Title        string    `yaml:"title"`
+	Status       Status    `yaml:"status"`
+	Priority     Priority  `yaml:"priority"`
+	Type         IssueType `yaml:"type"`
+	Assignee     string    `yaml:"assignee,omitempty"`
+	Labels       []string  `yaml:"labels,omitempty"`
+	Parent       string    `yaml:"parent,omitempty"`
+	Blocks       []string  `yaml:"blocks,omitempty"`
+	BlockedBy    []string  `yaml:"blocked_by,omitempty"`
+	WasBlockedBy []string  `yaml:"was_blocked_by,omitempty"`
+	Related      []string  `yaml:"related,omitempty"`
+	CreatedAt    time.Time `yaml:"created_at"`
+	CreatedBy    string    `yaml:"created_by"`
+	UpdatedAt    time.Time `yaml:"updated_at"`
+	DeferUntil   string    `yaml:"defer_until,omitempty"`
+	ClosedAt     string    `yaml:"closed_at,omitempty"`
+	CloseReason  string    `yaml:"close_reason,omitempty"`
+	ContentHash  string    `yaml:"content_hash"`
 
 	// Runtime fields -- not serialized to YAML frontmatter.
 	Body     string `yaml:"-"`

@@ -16,9 +16,9 @@ import (
 
 // depRecord holds a deferred dependency to wire after all issues exist.
 type depRecord struct {
-	issueID    string
-	dependsOn  string
-	depType    string // "parent-child", "blocks", "discovered-from", "related", "relates-to"
+	issueID   string
+	dependsOn string
+	depType   string // "parent-child", "blocks", "discovered-from", "related", "relates-to"
 }
 
 var migrateCmd = &cobra.Command{
@@ -447,7 +447,6 @@ func normalizeMarkdown(s string) string {
 // (section#proof), hash routes (#/accounts), and any other inline #<text> that is
 // not a markdown heading.
 var falseTagPattern = regexp.MustCompile(`#/?[a-zA-Z0-9][a-zA-Z0-9_/:?&=.-]*`)
-
 
 // escapeFalseTags wraps code-like # patterns in backticks so Obsidian
 // does not interpret them as tags. Skips content already inside backticks.

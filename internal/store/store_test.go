@@ -157,10 +157,10 @@ func TestIssueExists(t *testing.T) {
 
 func TestBuildLinksSection(t *testing.T) {
 	tests := []struct {
-		name   string
-		issue  *model.Issue
-		want   []string
-		empty  bool
+		name  string
+		issue *model.Issue
+		want  []string
+		empty bool
 	}{
 		{
 			name:  "no relationships",

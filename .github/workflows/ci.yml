@@ -69,12 +69,13 @@ jobs:
         run: |
           go install github.com/securego/gosec/v2/cmd/gosec@latest
           # G115: int-to-byte conversion -- rand.IntN(256) is always in [0,255]
+          # G204: subprocess with variable -- $EDITOR is expected for nd edit
           # G301/G302/G306: file/dir permissions -- markdown files use standard 0644/0755
           # G304: file inclusion via variable -- expected for filesystem CLI
           # G404: weak RNG -- issue ID nonce, not security-sensitive
           # G703: path traversal taint -- all paths come from CLI args by design
           # G705: XSS taint -- irrelevant for CLI tool
-          gosec -exclude=G115,G301,G302,G304,G306,G404,G703,G705 -severity medium ./...
+          gosec -exclude=G115,G204,G301,G302,G304,G306,G404,G703,G705 -severity medium ./...
 
   secrets:
     name: Secret Scan
