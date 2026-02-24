@@ -38,7 +38,7 @@ We built [beads](https://github.com/steveyegge/beads) (`bd`) into the backbone o
 | History | None | Append-only history log per issue |
 | Epics | Basic parent-child | Tree traversal, status rollup, close-eligible |
 | Content integrity | None | SHA-256 content hashing |
-| Import from beads | N/A | `nd import --from-beads` preserves IDs and timestamps |
+| Import from beads | N/A | `nd import --from-beads` preserves IDs, timestamps, and infers execution trajectories |
 | DAG visualization | None | `nd graph` terminal DAG, `nd path` execution chains |
 
 Both tools use the same ID format (`PREFIX-HASH`, 4 base36 chars from SHA-256) for interoperability.
@@ -532,7 +532,7 @@ Outputs a structured summary for AI context injection: total counts, ready work,
 nd import --from-beads <path-to-jsonl>
 ```
 
-Parses a beads JSONL export and creates vault issue files. Preserves original IDs, timestamps, status (including custom statuses), labels, notes, and design content. Infers parent-child relationships from dotted IDs and cross-references.
+Three-pass import from beads JSONL: (1) creates all issues preserving original IDs, timestamps, statuses, labels, notes, and design content; (2) wires dependencies (parent-child inferred from dotted IDs and cross-references, blocks, related) and promotes parents to epics; (3) infers `follows`/`led_to` execution trajectories from `closed_at` timestamps -- sibling chains, related orphan chains, and epic-to-epic chains. After migration, `nd path` shows the full execution history.
 
 ### Vault Health
 

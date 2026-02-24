@@ -60,13 +60,40 @@ nd doctor
 | Molecules/chemistry | Not applicable to nd |
 | Dolt-specific metadata | Not applicable |
 
-Dependencies are wired in a second pass after all issues are created. Parent-child relationships are inferred from dotted IDs (e.g., `EPIC-abc.3`) and cross-references in descriptions.
+## Multi-Pass Import
+
+The migration runs three passes:
+
+### Pass 1: Create Issues
+
+All issues from the JSONL export are created as vault markdown files. Fields, timestamps, labels, notes, design, and acceptance criteria are preserved verbatim. Original IDs are kept.
+
+### Pass 2: Wire Dependencies
+
+After all issues exist, dependencies are wired:
+
+- **Parent-child** from explicit beads deps, dotted IDs (e.g., `EPIC-abc.3`), and cross-references in descriptions
+- **Blocks/blocked_by** from beads blocking deps
+- **Related** from beads `discovered-from`, `related`, and `relates-to` links
+- Parents with children are auto-promoted to `epic` type
+
+### Pass 3: Infer Execution Trajectories
+
+Since beads never had `follows`/`led_to` chains, and nd's auto-follows only fires on live `in_progress` transitions (which never happen during migration since issues arrive pre-closed), Pass 3 reconstructs temporal execution chains from `closed_at` timestamps:
+
+1. **Sibling chains under shared parents**: For each parent with closed children, sort children by `closed_at` ascending and chain consecutive pairs via `follows`/`led_to`. This captures the execution order within an epic.
+
+2. **Related orphan chains**: For closed issues that share `related` edges and have no parent, chain them temporally via `follows` based on which was closed first.
+
+3. **Epic-to-epic chains**: For closed epics, sort by the `closed_at` of their last closed child and chain them in execution order. This captures the project-level trajectory across milestones.
+
+After migration, `nd path` shows the full execution history as connected chains instead of disconnected islands.
 
 ## Post-Import Steps
 
 1. **Verify count**: `nd stats` should show issue counts matching `bd stats`
 2. **Run doctor**: `nd doctor --fix` to fix any content hash mismatches
-3. **Re-add dependencies**: Use `nd dep add` to recreate critical blocking relationships
+3. **Verify trajectories**: `nd path` should show execution chains
 4. **Test workflow**: `nd ready`, `nd blocked`, `nd show <id>` to verify everything works
 
 ## Coexistence

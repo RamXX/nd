@@ -1,7 +1,7 @@
 # CLI Command Reference
 
 **For:** AI agents and developers using the nd command-line interface
-**Version:** 0.4.0+
+**Version:** 0.5.0+
 
 ## Quick Navigation
 
@@ -440,7 +440,12 @@ Doctor checks:
 nd import --from-beads .beads/issues.jsonl
 ```
 
-Two-pass import: creates all issues first, then wires dependencies. Preserves original IDs, timestamps, statuses (including custom), labels, notes, and design content. See [MIGRATION.md](MIGRATION.md) for details.
+Three-pass import:
+1. **Pass 1**: Creates all issues, preserving original IDs, timestamps, statuses (including custom), labels, notes, and design content
+2. **Pass 2**: Wires dependencies (parent-child, blocks, related) and promotes parents to epics
+3. **Pass 3**: Infers `follows`/`led_to` execution trajectories from `closed_at` timestamps -- sibling chains under shared parents, related orphan chains, and epic-to-epic chains
+
+After migration, `nd path` shows the full execution history. See [MIGRATION.md](MIGRATION.md) for details.
 
 ## Global Flags
 
