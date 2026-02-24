@@ -4,20 +4,27 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/RamXX/nd/internal/model"
 )
 
 // FilterOptions controls which issues ListIssues returns.
 type FilterOptions struct {
-	Status   string
-	Type     string
-	Assignee string
-	Label    string
-	Priority string // filter by priority (e.g. "1", "P1")
-	Sort     string // "priority", "created", "updated", "id" (default)
-	Reverse  bool
-	Limit    int
+	Status        string
+	Type          string
+	Assignee      string
+	Label         string
+	Priority      string // filter by priority (e.g. "1", "P1")
+	Parent        string // filter by parent ID
+	NoParent      bool   // issues with no parent
+	CreatedAfter  time.Time
+	CreatedBefore time.Time
+	UpdatedAfter  time.Time
+	UpdatedBefore time.Time
+	Sort          string // "priority", "created", "updated", "id" (default)
+	Reverse       bool
+	Limit         int
 }
 
 // ListIssues reads all issues from the vault and applies filters.
@@ -118,6 +125,24 @@ func matchesFilter(issue *model.Issue, opts FilterOptions) bool {
 		if issue.Priority != p {
 			return false
 		}
+	}
+	if opts.Parent != "" && issue.Parent != opts.Parent {
+		return false
+	}
+	if opts.NoParent && issue.Parent != "" {
+		return false
+	}
+	if !opts.CreatedAfter.IsZero() && !issue.CreatedAt.After(opts.CreatedAfter) {
+		return false
+	}
+	if !opts.CreatedBefore.IsZero() && !issue.CreatedAt.Before(opts.CreatedBefore) {
+		return false
+	}
+	if !opts.UpdatedAfter.IsZero() && !issue.UpdatedAt.After(opts.UpdatedAfter) {
+		return false
+	}
+	if !opts.UpdatedBefore.IsZero() && !issue.UpdatedAt.Before(opts.UpdatedBefore) {
+		return false
 	}
 	return true
 }

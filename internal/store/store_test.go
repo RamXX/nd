@@ -273,6 +273,49 @@ func TestUpdateLinksSection(t *testing.T) {
 	}
 }
 
+func TestListFilterParent(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Init(dir, "TST", "tester")
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	epic, err := s.CreateIssue("Epic", "", "epic", 2, "", nil, "")
+	if err != nil {
+		t.Fatalf("create epic: %v", err)
+	}
+	_, err = s.CreateIssue("Child A", "", "task", 2, "", nil, epic.ID)
+	if err != nil {
+		t.Fatalf("create child A: %v", err)
+	}
+	_, err = s.CreateIssue("Child B", "", "task", 2, "", nil, epic.ID)
+	if err != nil {
+		t.Fatalf("create child B: %v", err)
+	}
+	_, err = s.CreateIssue("Orphan", "", "task", 2, "", nil, "")
+	if err != nil {
+		t.Fatalf("create orphan: %v", err)
+	}
+
+	// Filter by parent.
+	children, err := s.ListIssues(FilterOptions{Parent: epic.ID})
+	if err != nil {
+		t.Fatalf("list parent=%s: %v", epic.ID, err)
+	}
+	if len(children) != 2 {
+		t.Errorf("expected 2 children, got %d", len(children))
+	}
+
+	// Filter by no-parent.
+	orphans, err := s.ListIssues(FilterOptions{NoParent: true})
+	if err != nil {
+		t.Fatalf("list no-parent: %v", err)
+	}
+	if len(orphans) != 2 { // epic + orphan
+		t.Errorf("expected 2 no-parent issues, got %d", len(orphans))
+	}
+}
+
 func TestLinksMigration(t *testing.T) {
 	dir := t.TempDir()
 	s, err := Init(dir, "TST", "tester")
