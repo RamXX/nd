@@ -1,5 +1,10 @@
 # nd - Vault-backed Issue Tracker
 
+[![CI](https://github.com/RamXX/nd/actions/workflows/ci.yml/badge.svg)](https://github.com/RamXX/nd/actions/workflows/ci.yml)
+[![Release](https://github.com/RamXX/nd/actions/workflows/release.yml/badge.svg)](https://github.com/RamXX/nd/actions/workflows/release.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/RamXX/nd)](https://goreportcard.com/report/github.com/RamXX/nd)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
 **nd** (short for `node` as node in a graph) is a Git-native issue tracker that stores issues as Obsidian-compatible markdown files with YAML frontmatter. No database server. No field size limits. Plain files you can read, grep, and version with git.
 
 ## Why nd Exists

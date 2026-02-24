@@ -159,7 +159,6 @@ func extractInt(m map[string]any, key string, fallback int) int {
 	return fallback
 }
 
-
 func init() {
 	importCmd.Flags().String("from-beads", "", "path to beads JSONL file")
 	rootCmd.AddCommand(importCmd)

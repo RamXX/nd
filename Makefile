@@ -2,20 +2,24 @@ MODULE := github.com/RamXX/nd
 BIN    := nd
 PREFIX := $(HOME)/.local/bin
 
-.PHONY: build test install clean vet
+.PHONY: help build test vet install clean
 
-build:
+help: ## Show this help
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
+		awk 'BEGIN {FS = ":.*?## "}; {printf "  %-15s %s\n", $$1, $$2}'
+
+build: ## Build nd binary
 	go build -o $(BIN) .
 
-test:
-	go test ./...
+test: ## Run tests
+	go test -v ./...
 
-vet:
+vet: ## Run go vet
 	go vet ./...
 
-install: build
+install: build ## Install nd to ~/.local/bin
 	mkdir -p $(PREFIX)
 	cp $(BIN) $(PREFIX)/$(BIN)
 
-clean:
+clean: ## Remove build artifacts
 	rm -f $(BIN)
