@@ -45,7 +45,7 @@ nd doctor
 | Type | Yes | Mapped to nd types (default: task) |
 | Priority | Yes | 0-4 or P0-P4 format accepted |
 | Assignee | Yes | |
-| Status | Yes | open, in_progress, blocked, deferred, closed |
+| Status | Yes | open, in_progress, blocked, deferred, closed, custom |
 | Labels | Yes | Array of strings |
 | Notes | Yes | Appended to ## Notes section |
 | Design | Yes | Patched into ## Design section |
@@ -56,10 +56,11 @@ nd doctor
 
 | Field | Reason |
 |-------|--------|
-| Dependencies | Beads deps use different semantics; re-add with `nd dep add` |
-| External refs | Not yet supported in nd |
+| External refs | Not applicable to nd |
 | Molecules/chemistry | Not applicable to nd |
 | Dolt-specific metadata | Not applicable |
+
+Dependencies are wired in a second pass after all issues are created. Parent-child relationships are inferred from dotted IDs (e.g., `EPIC-abc.3`) and cross-references in descriptions.
 
 ## Post-Import Steps
 
@@ -80,6 +81,6 @@ nd and beads can coexist in the same project. nd uses `.vault/` while beads uses
 | Storage | Dolt SQL database | Markdown files |
 | Sync | `bd dolt push/pull` | `git push/pull` |
 | Compact | `bd admin compact` | Not yet available |
-| Quick capture | `bd q "title"` | `nd create "title" --quiet` |
+| Quick capture | `bd q "title"` | `nd q "title"` |
 
 After migration, you may want to update any scripts or hooks that reference `bd` commands to use `nd` equivalents.

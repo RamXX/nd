@@ -1,7 +1,7 @@
 # CLI Command Reference
 
 **For:** AI agents and developers using the nd command-line interface
-**Version:** 0.1.0+
+**Version:** 0.3.0+
 
 ## Quick Navigation
 
@@ -11,8 +11,12 @@
 - [Dependencies](#dependencies)
 - [Labels and Comments](#labels-and-comments)
 - [Epics](#epics)
+- [Visualization](#visualization)
 - [Search and Stats](#search-and-stats)
+- [Deferring Work](#deferring-work)
+- [Configuration](#configuration)
 - [AI Context and Health](#ai-context-and-health)
+- [Migration](#migration)
 - [Global Flags](#global-flags)
 
 ## Initialization
@@ -39,20 +43,37 @@ nd create "Title" \
   --assignee=alice \
   --labels=auth,urgent \
   --description="Detailed description" \
-  --parent=PROJ-a3f
+  --parent=PROJ-a3f \
+  --body-file=spec.md
 
 # Short flags
 nd create "Title" -t bug -p 1 -d "Description"
+
+# Read description from stdin
+echo "Long description" | nd create "Title" --body-file=-
 ```
 
 Output: `Created PROJ-a3f: Issue title`
 With `--quiet`: just the ID
 With `--json`: `{"id":"PROJ-a3f"}`
 
+### Quick Capture (q)
+
+```bash
+# Create issue and output only the ID (for scripting)
+nd q "Fix login bug"                              # Outputs: PROJ-a1b2
+nd q "Task" -t task -p 1                          # With type and priority
+nd q "Bug" -t bug --labels=critical               # With labels
+
+# Scripting examples
+ISSUE=$(nd q "New feature")                       # Capture ID in variable
+nd q "Task" | xargs nd show                       # Pipe to other commands
+```
+
 ### Show
 
 ```bash
-nd show PROJ-a3f              # Full detail view
+nd show PROJ-a3f              # Full detail view (rendered markdown)
 nd show PROJ-a3f --short      # One-line summary
 nd show PROJ-a3f --json       # JSON output
 ```
@@ -67,46 +88,109 @@ nd update PROJ-a3f --title="New title"
 nd update PROJ-a3f --type=bug
 nd update PROJ-a3f --append-notes="Found the root cause"
 nd update PROJ-a3f -d "New description"
+nd update PROJ-a3f --body-file=updated-spec.md
+
+# Parent management
+nd update PROJ-a3f --parent=PROJ-epic             # Set parent
+nd update PROJ-a3f --parent=""                     # Clear parent
+
+# Label management
+nd update PROJ-a3f --set-labels=auth,urgent        # Replace all labels
+nd update PROJ-a3f --add-label=security            # Add label(s)
+nd update PROJ-a3f --remove-label=urgent           # Remove label(s)
+nd update PROJ-a3f --set-labels=""                  # Clear all labels
 ```
+
+When FSM is enabled, `--status` transitions are validated against the configured sequence and exit rules.
+
+### Edit
+
+```bash
+nd edit PROJ-a3f       # Open issue file in $EDITOR ($VISUAL, defaults to vi)
+```
+
+After saving, nd refreshes the content hash and Links section automatically.
 
 ### Close and Reopen
 
 ```bash
 # Close one or more issues
-nd close PROJ-a3f                         # Close single
-nd close PROJ-a3f PROJ-b7c               # Close multiple (batch)
-nd close PROJ-a3f --reason="Implemented"  # With reason
+nd close PROJ-a3f                                 # Close single
+nd close PROJ-a3f PROJ-b7c                        # Close multiple (batch)
+nd close PROJ-a3f --reason="Implemented"          # With reason
+nd close PROJ-a3f --suggest-next                  # Show next ready issue after closing
 
 # Reopen a closed issue
 nd reopen PROJ-a3f
 ```
 
+When FSM is enabled, `nd close` requires the issue to be at the step immediately before `closed` in the sequence. `nd reopen` is always allowed.
+
+### Delete
+
+```bash
+nd delete PROJ-a3f                                # Soft delete (moves to .trash/)
+nd delete PROJ-a3f --permanent                    # Permanent delete (no recovery)
+nd delete PROJ-a3f --dry-run                      # Preview what would be deleted
+nd delete PROJ-a3f PROJ-b7c                       # Delete multiple
+```
+
+Deleting cleans up all dependency references in other issues.
+
 ### List
 
 ```bash
-# List with filters
-nd list                                   # All issues (sorted by priority)
-nd list --status=open                     # Filter by status
-nd list --type=bug                        # Filter by type
-nd list --assignee=alice                  # Filter by assignee
-nd list --label=critical                  # Filter by label
-nd list --sort=created                    # Sort: priority, created, updated, id
-nd list -n 10                             # Limit results
-nd list --json                            # JSON output
+# Default: non-closed issues sorted by priority
+nd list
+
+# Status filters
+nd list --status=open                             # Single status
+nd list --status=in_progress
+nd list --status=all                              # All statuses
+nd list --all                                     # Include closed
+
+# Field filters
+nd list --type=bug                                # Filter by type
+nd list --assignee=alice                          # Filter by assignee
+nd list --label=critical                          # Filter by label
+nd list --priority=0                              # Filter by priority (0-4 or P0-P4)
+
+# Hierarchy filters
+nd list --parent=PROJ-a3f                         # Children of a specific parent
+nd list --no-parent                               # Only issues without a parent
+
+# Date filters (YYYY-MM-DD)
+nd list --created-after=2026-02-01
+nd list --created-before=2026-02-28
+nd list --updated-after=2026-02-20
+nd list --updated-before=2026-02-24
+
+# Sorting and limits
+nd list --sort=created                            # Sort: priority, created, updated, id
+nd list --reverse                                 # Reverse sort order
+nd list -n 10                                     # Limit results (0 = unlimited)
+nd list --json                                    # JSON output
+
+# Custom statuses (when configured)
+nd list --status=review                           # Filter by custom status
 ```
 
 ## Finding Work
 
 ```bash
-# Ready work (no blockers)
-nd ready                                  # All ready issues
-nd ready --assignee=alice                 # Filter by assignee
-nd ready --sort=priority                  # Sort: priority, created, updated, id
-nd ready -n 5                             # Top 5
+# Ready work (no blockers, not closed/deferred)
+nd ready                                          # All ready issues
+nd ready --assignee=alice                         # Filter by assignee
+nd ready --sort=priority                          # Sort: priority, created, updated, id
+nd ready -n 5                                     # Top 5
 
 # Blocked work
-nd blocked                                # Show blocked issues
-nd blocked --verbose                      # Include blocker details
+nd blocked                                        # Show blocked issues
+nd blocked --verbose                              # Include blocker details
+
+# Stale issues (not updated recently)
+nd stale                                          # Default: 30 days
+nd stale --days=14                                # Custom threshold
 ```
 
 ## Dependencies
@@ -120,29 +204,39 @@ nd dep rm PROJ-a3f PROJ-b7c
 
 # List all dependencies of an issue
 nd dep list PROJ-a3f
+
+# Related links (soft, bidirectional, no blocking effect)
+nd dep relate PROJ-a3f PROJ-b7c                   # Add related link
+nd dep unrelate PROJ-a3f PROJ-b7c                 # Remove related link
+
+# Cycle detection
+nd dep cycles                                     # Find circular dependencies
+
+# Dependency tree
+nd dep tree PROJ-a3f                              # Show dependency tree from issue
 ```
 
-**Dependency semantics**: `nd dep add A B` means "A depends on B" (B must complete before A). This updates both files:
+**Dependency semantics**: `nd dep add A B` means "A depends on B" (B must complete before A). This updates both files bidirectionally:
 - Adds B to A's `blocked_by`
 - Adds A to B's `blocks`
 
-Removing a dependency cleans both sides.
+Removing a dependency cleans both sides and preserves history in `was_blocked_by`.
 
 ## Labels and Comments
 
 ### Labels
 
 ```bash
-nd labels add PROJ-a3f security          # Add label
-nd labels rm PROJ-a3f security           # Remove label
-nd labels list                           # All labels with counts
+nd labels add PROJ-a3f security                   # Add label
+nd labels rm PROJ-a3f security                    # Remove label
+nd labels list                                    # All labels with counts
 ```
 
 ### Comments
 
 ```bash
-nd comments add PROJ-a3f "Comment text"  # Add timestamped comment
-nd comments list PROJ-a3f                # View comments
+nd comments add PROJ-a3f "Comment text"           # Add timestamped comment
+nd comments list PROJ-a3f                         # View comments
 ```
 
 Comments are appended to the `## Comments` section in the issue file with RFC3339 timestamp and author.
@@ -157,44 +251,132 @@ nd epic status PROJ-a3f
 # Epic tree view
 nd epic tree PROJ-a3f
 # Output: Hierarchical tree with status markers
-#   [ ] open  [>] in_progress  [!] blocked  [x] closed
+#   [ ] open  [>] in_progress  [!] blocked  [x] closed  [-] deferred
+
+# Find epics ready to close (all children closed)
+nd epic close-eligible
+
+# List children of a parent
+nd children PROJ-a3f
 ```
+
+## Visualization
+
+```bash
+# Terminal DAG of dependency graph
+nd graph                                          # All root issues (no blockers)
+nd graph --status=in_progress                     # Filter by status
+nd graph --all                                    # Include closed issues
+```
+
+Renders the dependency graph with status-colored nodes and directed edges. Status icons: `[ ]` open, `[>]` in_progress, `[!]` blocked, `[-]` deferred, `[x]` closed.
 
 ## Search and Stats
 
 ```bash
 # Full-text search across issues
-nd search "authentication"                # Returns matching lines with context
+nd search "authentication"                        # Returns matching lines with context
 
 # Project statistics
-nd stats                                  # Text summary
-nd stats --json                           # JSON (Total, Open, InProgress, etc.)
+nd stats                                          # Text summary by status, type, priority
+nd stats --json                                   # JSON output
+
+# Issue counts (for scripting)
+nd count                                          # Default: by status
+nd count --by=type                                # Group by: status, type, priority, assignee, label
+nd count --status=open                            # Filter before counting
 ```
+
+## Deferring Work
+
+```bash
+# Defer an issue (set status to deferred)
+nd defer PROJ-a3f                                 # Defer indefinitely
+nd defer PROJ-a3f --until=2026-03-01              # Defer until date
+
+# Restore a deferred issue to open
+nd undefer PROJ-a3f
+```
+
+Deferred issues are excluded from `nd ready`.
+
+## Configuration
+
+```bash
+# Manage vault-level settings
+nd config list                                    # Show all config values
+nd config get status.custom                       # Get specific value
+nd config set status.custom "review,qa"           # Set custom statuses
+```
+
+### Available Config Keys
+
+| Key | Description | Example |
+|-----|-------------|---------|
+| `status.custom` | Comma-separated custom statuses | `review,qa,rejected` |
+| `status.sequence` | Ordered pipeline for FSM | `open,in_progress,review,qa,closed` |
+| `status.fsm` | Enable/disable FSM enforcement | `true` / `false` |
+| `status.exit_rules` | Restrict exits from statuses | `blocked:open,in_progress` |
+
+### Custom Statuses
+
+Define project-specific statuses beyond the 5 built-ins:
+
+```bash
+nd config set status.custom "review,qa"
+```
+
+Custom statuses work everywhere: `nd update --status=review`, `nd list --status=qa`, `nd stats`, `nd doctor`.
+
+### FSM Enforcement (Opt-in)
+
+Enable workflow enforcement with a configured sequence:
+
+```bash
+# Define the happy path
+nd config set status.sequence "open,in_progress,review,qa,closed"
+
+# Optionally restrict exits from specific statuses
+nd config set status.exit_rules "blocked:open,in_progress"
+
+# Enable enforcement
+nd config set status.fsm true
+```
+
+When FSM is enabled:
+- **Forward**: must advance exactly one step in the sequence (no skipping)
+- **Backward**: can return to any earlier step (rework)
+- **Off-sequence statuses** (like `blocked`): unrestricted entry/exit unless exit rules apply
+- `nd close` requires the issue to be at the step immediately before `closed`
+- `nd reopen` always works
 
 ## AI Context and Health
 
 ```bash
 # AI context output
-nd prime                                  # Structured summary for AI
-nd prime --json                           # Full project state as JSON
+nd prime                                          # Structured summary for AI
+nd prime --json                                   # Full project state as JSON
 
 # Vault health check
-nd doctor                                 # Validate integrity
-nd doctor --fix                           # Auto-fix problems
+nd doctor                                         # Validate integrity
+nd doctor --fix                                   # Auto-fix problems
 ```
 
 Doctor checks:
-1. Content hash integrity (SHA-256 of body vs stored hash)
-2. Bidirectional dependency consistency
-3. Reference validity (no orphan dep references)
-4. Field validation (required fields, valid enums)
+1. **HASH**: Content hash integrity (SHA-256 of body vs stored hash)
+2. **DEP**: Bidirectional dependency consistency
+3. **REF**: Reference validity (no orphan dep references)
+4. **VALID**: Field validation (required fields, valid enums, custom statuses)
+5. **LINKS**: Links section integrity (wikilinks match frontmatter relationships)
 
-### Import
+## Migration
 
 ```bash
 # Import from beads JSONL
 nd import --from-beads .beads/issues.jsonl
 ```
+
+Two-pass import: creates all issues first, then wires dependencies. Preserves original IDs, timestamps, statuses (including custom), labels, notes, and design content. See [MIGRATION.md](MIGRATION.md) for details.
 
 ## Global Flags
 
@@ -221,11 +403,17 @@ Vault auto-discovery walks up the directory tree looking for `.vault/`.
 
 ## Status Values
 
+### Built-in Statuses
+
 - `open` -- Available to work on
 - `in_progress` -- Currently being worked
 - `blocked` -- Blocked by dependencies
-- `deferred` -- Intentionally deferred
+- `deferred` -- Intentionally deferred (with optional target date)
 - `closed` -- Completed
+
+### Custom Statuses
+
+Defined via `nd config set status.custom`. Custom statuses display with `diamond` icon and work in all commands.
 
 ## Issue Types
 

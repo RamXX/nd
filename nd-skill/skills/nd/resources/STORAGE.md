@@ -20,7 +20,13 @@ How nd stores issues on disk. This is the canonical reference for the file forma
 version: "1"
 prefix: PROJ
 created_by: alice
+status_custom: "review,qa,rejected"
+status_sequence: "open,in_progress,review,qa,closed"
+status_fsm: true
+status_exit_rules: "blocked:open,in_progress;rejected:in_progress"
 ```
+
+Manage via `nd config set/get/list` or edit directly. See [CLI_REFERENCE.md](CLI_REFERENCE.md#configuration) for config keys.
 
 ## Issue File Format
 
@@ -72,7 +78,7 @@ Started implementation.
 |-------|------|----------|-------------|
 | `id` | string | Yes | Unique identifier: PREFIX-HASH |
 | `title` | string (quoted) | Yes | Issue title |
-| `status` | enum | Yes | open, in_progress, blocked, deferred, closed |
+| `status` | enum | Yes | open, in_progress, blocked, deferred, closed (+ custom) |
 | `priority` | int (0-4) | Yes | 0=critical, 4=backlog |
 | `type` | enum | Yes | bug, feature, task, epic, chore, decision |
 | `assignee` | string | No | Assigned person |
@@ -81,6 +87,8 @@ Started implementation.
 | `blocks` | string[] | No | IDs this issue blocks |
 | `blocked_by` | string[] | No | IDs blocking this issue |
 | `related` | string[] | No | Related issue IDs |
+| `was_blocked_by` | string[] | No | Historical blockers (after removal) |
+| `defer_until` | string | No | Target date for deferred issues (YYYY-MM-DD) |
 | `created_at` | RFC3339 | Yes | Creation timestamp |
 | `created_by` | string | Yes | Creator name |
 | `updated_at` | RFC3339 | Yes | Last update timestamp |
@@ -98,6 +106,7 @@ The body (below frontmatter) contains these standard sections:
 | `## Acceptance Criteria` | Definition of done | Manual edit |
 | `## Design` | Design decisions, architecture | Manual edit, import |
 | `## Notes` | Working notes | `nd update --append-notes` |
+| `## Links` | Wikilinks derived from relationships | Auto-maintained by nd |
 | `## Comments` | Timestamped discussion | `nd comments add` |
 
 ## ID Generation

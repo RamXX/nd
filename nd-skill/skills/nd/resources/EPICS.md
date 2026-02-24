@@ -83,6 +83,22 @@ nd epic tree PROJ-a3f
 nd ready                        # Only PROJ-b7c is ready (foundation)
 ```
 
+## Finding Close-Eligible Epics
+
+```bash
+nd epic close-eligible
+```
+
+Lists epics where all children are closed. These are candidates for closing the parent epic.
+
+## Listing Children
+
+```bash
+nd children PROJ-a3f
+```
+
+Lists all child issues of a parent (equivalent to `nd list --parent=PROJ-a3f`).
+
 ## When to Use Epics
 
 Use epics when:

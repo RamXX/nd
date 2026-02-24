@@ -5,7 +5,7 @@ description: >
   Use for multi-session work, dependency tracking, and persistent context that
   survives conversation compaction. No database server. No size limits. Git-native.
 allowed-tools: "Read,Bash(nd:*)"
-version: "0.1.0"
+version: "0.3.0"
 author: "Ramiro Salas <https://github.com/RamXX>"
 license: "Apache-2.0"
 ---
@@ -73,10 +73,15 @@ For the full storage format specification, see [STORAGE.md](resources/STORAGE.md
 
 | Operation | Command | Resource |
 |-----------|---------|----------|
-| Find work | `nd ready`, `nd blocked` | [WORKFLOWS.md](resources/WORKFLOWS.md) |
-| Create issues | `nd create "Title" --type=task` | [ISSUE_CREATION.md](resources/ISSUE_CREATION.md) |
-| Dependencies | `nd dep add A B` | [DEPENDENCIES.md](resources/DEPENDENCIES.md) |
-| Epics | `nd epic tree <id>` | [EPICS.md](resources/EPICS.md) |
+| Find work | `nd ready`, `nd blocked`, `nd stale` | [WORKFLOWS.md](resources/WORKFLOWS.md) |
+| Create issues | `nd create`, `nd q` (quick capture) | [ISSUE_CREATION.md](resources/ISSUE_CREATION.md) |
+| Dependencies | `nd dep add/rm/relate/cycles/tree` | [DEPENDENCIES.md](resources/DEPENDENCIES.md) |
+| Epics | `nd epic tree/status/close-eligible` | [EPICS.md](resources/EPICS.md) |
+| Visualization | `nd graph` (terminal DAG) | [CLI_REFERENCE.md](resources/CLI_REFERENCE.md) |
+| Custom statuses | `nd config set status.custom` | [CLI_REFERENCE.md](resources/CLI_REFERENCE.md) |
+| FSM enforcement | `nd config set status.fsm true` | [CLI_REFERENCE.md](resources/CLI_REFERENCE.md) |
+| Defer work | `nd defer/undefer` | [CLI_REFERENCE.md](resources/CLI_REFERENCE.md) |
+| Statistics | `nd stats`, `nd count` | [CLI_REFERENCE.md](resources/CLI_REFERENCE.md) |
 | Search | `nd search "query"` | -- |
 | Health | `nd doctor [--fix]` | [TROUBLESHOOTING.md](resources/TROUBLESHOOTING.md) |
 | AI context | `nd prime [--json]` | -- |

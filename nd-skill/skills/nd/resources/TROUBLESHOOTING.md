@@ -68,6 +68,19 @@ nd list --vault=/path/to/vault
 ls .vault/issues/
 ```
 
+## Links Section Inconsistency
+
+**Symptom**: `nd doctor` reports `[LINKS] ID: Links section missing or inconsistent`
+
+**Cause**: The `## Links` section (containing wikilinks like `[[PROJ-b7c]]`) doesn't match the frontmatter relationships (parent, blocks, blocked_by, related).
+
+**Fix**:
+```bash
+nd doctor --fix    # Regenerates Links sections from frontmatter
+```
+
+This also happens after `nd edit` if the Links section was manually changed. The `nd edit` command auto-refreshes Links on save.
+
 ## Empty Ready Queue
 
 **Symptom**: `nd ready` shows "No issues found."

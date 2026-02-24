@@ -96,10 +96,35 @@ nd dep list PROJ-a3f
 #   PROJ-d9e [open] Integration tests (P2)
 ```
 
+## Related Links
+
+Related links are **soft, bidirectional connections** that don't affect the ready queue. Use them for context and discoverability.
+
+```bash
+nd dep relate PROJ-a3f PROJ-b7c     # Add bidirectional related link
+nd dep unrelate PROJ-a3f PROJ-b7c   # Remove bidirectional related link
+```
+
+**When to use related vs blocks:**
+- `blocks`: "A literally cannot proceed until B is done" (hard blocker)
+- `related`: "A and B are connected but either can proceed independently" (soft link)
+
+Examples of related: alternative approaches, documentation alongside code, refactoring efforts in similar areas.
+
 ## Cycle Detection
 
-`nd doctor` detects dependency cycles. A cycle means no issue in the cycle can ever become ready. Fix by removing one dependency to break the cycle.
+```bash
+nd dep cycles     # Detect dependency cycles
+```
 
-## Dependency vs Related
+A cycle means no issue in the cycle can ever become ready. The command returns the cycle path so you can identify which dependency to remove.
 
-nd's `blocked_by`/`blocks` are **hard dependencies** -- they affect the ready queue. The `related` field in frontmatter is for **soft relationships** (informational links that don't block work). Related issues can be edited directly in the markdown file.
+`nd doctor` also detects cycles as part of its validation checks.
+
+## Dependency Tree
+
+```bash
+nd dep tree PROJ-a3f     # Show dependency tree from issue
+```
+
+Displays the forward dependency tree (what the issue blocks, recursively) as an ASCII tree in the terminal.
