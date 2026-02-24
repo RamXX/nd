@@ -13,16 +13,16 @@ const (
 	StatusOpen       Status = "open"
 	StatusInProgress Status = "in_progress"
 	StatusBlocked    Status = "blocked"
-	StatusDeferred Status = "deferred"
-	StatusClosed   Status = "closed"
+	StatusDeferred   Status = "deferred"
+	StatusClosed     Status = "closed"
 )
 
 var validStatuses = map[Status]bool{
 	StatusOpen:       true,
 	StatusInProgress: true,
 	StatusBlocked:    true,
-	StatusDeferred: true,
-	StatusClosed:   true,
+	StatusDeferred:   true,
+	StatusClosed:     true,
 }
 
 func ParseStatus(s string) (Status, error) {
