@@ -50,7 +50,7 @@ func (s *Store) createIssue(id, title, description, issueType string, priority i
 		Body:        body,
 	}
 
-	if err := issue.Validate(); err != nil {
+	if err := issue.ValidateWithCustom(s.CustomStatuses()); err != nil {
 		return nil, fmt.Errorf("validate: %w", err)
 	}
 
@@ -121,6 +121,13 @@ func buildLinksSection(issue *model.Issue) string {
 		}
 		sb.WriteString(fmt.Sprintf("- Blocked by: %s\n", strings.Join(links, ", ")))
 	}
+	if len(issue.WasBlockedBy) > 0 {
+		links := make([]string, len(issue.WasBlockedBy))
+		for i, b := range issue.WasBlockedBy {
+			links[i] = fmt.Sprintf("[[%s]]", b)
+		}
+		sb.WriteString(fmt.Sprintf("- Was blocked by: %s\n", strings.Join(links, ", ")))
+	}
 	if len(issue.Related) > 0 {
 		links := make([]string, len(issue.Related))
 		for i, r := range issue.Related {
@@ -157,6 +164,7 @@ func marshalFrontmatter(issue *model.Issue) string {
 	}
 	writeStringList(&sb, "blocks", issue.Blocks)
 	writeStringList(&sb, "blocked_by", issue.BlockedBy)
+	writeStringList(&sb, "was_blocked_by", issue.WasBlockedBy)
 	writeStringList(&sb, "related", issue.Related)
 	if issue.DeferUntil != "" {
 		sb.WriteString(fmt.Sprintf("defer_until: %s\n", issue.DeferUntil))

@@ -125,6 +125,76 @@ func TestValidate(t *testing.T) {
 	}
 }
 
+func TestParseStatusWithCustom(t *testing.T) {
+	custom := []Status{"delivered", "accepted", "rejected"}
+
+	// Built-in still works.
+	st, err := ParseStatusWithCustom("open", custom)
+	if err != nil {
+		t.Fatalf("unexpected error for built-in: %v", err)
+	}
+	if st != StatusOpen {
+		t.Errorf("got %q, want open", st)
+	}
+
+	// Custom status works.
+	st, err = ParseStatusWithCustom("delivered", custom)
+	if err != nil {
+		t.Fatalf("unexpected error for custom: %v", err)
+	}
+	if st != "delivered" {
+		t.Errorf("got %q, want delivered", st)
+	}
+
+	// Unknown fails.
+	_, err = ParseStatusWithCustom("unknown", custom)
+	if err == nil {
+		t.Error("expected error for unknown status")
+	}
+
+	// Without custom, custom status fails.
+	_, err = ParseStatusWithCustom("delivered", nil)
+	if err == nil {
+		t.Error("expected error for custom status without custom list")
+	}
+}
+
+func TestValidateWithCustomStatus(t *testing.T) {
+	custom := []Status{"delivered"}
+	issue := &Issue{
+		ID:        "TST-001",
+		Title:     "Test",
+		Status:    "delivered",
+		Priority:  PriorityMedium,
+		Type:      TypeTask,
+		CreatedAt: time.Now(),
+		CreatedBy: "tester",
+	}
+
+	// Should fail with Validate (no custom).
+	if err := issue.Validate(); err == nil {
+		t.Error("Validate should reject custom status without custom list")
+	}
+
+	// Should pass with ValidateWithCustom.
+	if err := issue.ValidateWithCustom(custom); err != nil {
+		t.Errorf("ValidateWithCustom should accept custom status: %v", err)
+	}
+}
+
+func TestIsBuiltinStatus(t *testing.T) {
+	for _, name := range []string{"open", "in_progress", "blocked", "deferred", "closed"} {
+		if !IsBuiltinStatus(name) {
+			t.Errorf("IsBuiltinStatus(%q) = false, want true", name)
+		}
+	}
+	for _, name := range []string{"delivered", "accepted", "rejected", "unknown"} {
+		if IsBuiltinStatus(name) {
+			t.Errorf("IsBuiltinStatus(%q) = true, want false", name)
+		}
+	}
+}
+
 func TestIsActionable(t *testing.T) {
 	issue := &Issue{Status: StatusOpen}
 	if !issue.IsActionable() {

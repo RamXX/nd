@@ -11,6 +11,11 @@ func ValidateIssue(issue *model.Issue) error {
 	return issue.Validate()
 }
 
+// ValidateIssueWithCustom validates an issue accepting custom statuses.
+func ValidateIssueWithCustom(issue *model.Issue, custom []model.Status) error {
+	return issue.ValidateWithCustom(custom)
+}
+
 // ValidateDeps checks that dependency references don't form obvious problems:
 // - An issue cannot block itself.
 // - blocks and blocked_by should not overlap for the same ID.

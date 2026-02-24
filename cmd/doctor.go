@@ -116,7 +116,7 @@ var doctorCmd = &cobra.Command{
 
 		// Check 4: Validation.
 		for _, issue := range issues {
-			if err := enforce.ValidateIssue(issue); err != nil {
+			if err := enforce.ValidateIssueWithCustom(issue, s.CustomStatuses()); err != nil {
 				fmt.Printf("[VALID] %s: %v\n", issue.ID, err)
 				problems++
 			}

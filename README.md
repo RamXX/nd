@@ -18,6 +18,25 @@ We built [beads](https://github.com/steveyegge/beads) (`bd`) into the backbone o
 
 `nd` solves all of this by storing issues as plain markdown files in a directory. The storage layer is [vlt](https://github.com/RamXX/vlt), an Obsidian-compliant vault management library, used as an importable Go library. vlt handles file I/O, frontmatter parsing, search, file locking, and content patching. `nd` adds issue-tracker semantics on top.
 
+## nd vs beads
+
+| Capability | beads (`bd`) | nd |
+|---|---|---|
+| Storage | Dolt SQL (binary database) | Markdown files in a directory |
+| Field size | 65KB limit (Dolt TEXT) | Unlimited (filesystem) |
+| Server | `dolt sql-server` required | None |
+| Inspectability | SQL queries only | `cat`, `grep`, `git diff` |
+| Obsidian compatible | No | Yes -- wikilinks, frontmatter |
+| Custom statuses | `status.custom` comma-separated config | Same, plus opt-in FSM enforcement |
+| Status enforcement | None | Configurable: sequence, exit rules |
+| Dependencies | Flat `depends_on` | Bidirectional blocks/blocked_by with history |
+| Epics | Basic parent-child | Tree traversal, status rollup, close-eligible |
+| Content integrity | None | SHA-256 content hashing |
+| Import from beads | N/A | `nd import --from-beads` preserves IDs and timestamps |
+| DAG visualization | None | `nd graph` terminal DAG |
+
+Both tools use the same ID format (`PREFIX-HASH`, 4 base36 chars from SHA-256) for interoperability.
+
 ### What vlt Provides
 
 [vlt](https://github.com/RamXX/vlt) (`github.com/RamXX/vlt`) is an Obsidian-compatible vault CLI and Go library. nd imports it directly for:
@@ -36,7 +55,7 @@ We built [beads](https://github.com/steveyegge/beads) (`bd`) into the backbone o
 | Locking | `vlt.LockVault(dir, exclusive)` | Concurrent access safety |
 | Delete | `v.Delete()` | Soft delete to .trash/ |
 
-nd adds: issue model with validation, collision-resistant ID generation, dependency graph computation (ready/blocked/cycles), content hashing, epic tree traversal, colored CLI output, and markdown rendering.
+nd adds: issue model with validation, collision-resistant ID generation, dependency graph computation (ready/blocked/cycles), content hashing, epic tree traversal, colored CLI output, markdown rendering, configurable FSM enforcement, and custom status support.
 
 ## Installation
 
@@ -76,6 +95,83 @@ nd close PROJ-a3f8 --reason="Fixed with input validation"
 nd ready                           # PROJ-b7c2 is now unblocked
 ```
 
+## Custom Statuses
+
+nd ships with 5 built-in statuses: `open`, `in_progress`, `blocked`, `deferred`, `closed`. You can extend these with project-specific statuses via configuration.
+
+```bash
+nd config set status.custom "review,qa"
+nd config get status.custom
+nd config list
+```
+
+Custom statuses work everywhere: `nd update`, `nd list --status`, `nd stats`, `nd doctor`.
+
+## Status FSM (Workflow Enforcement)
+
+nd includes an opt-in finite state machine that enforces status transitions. The engine is fully generic -- all rules come from configuration, nothing is hardcoded.
+
+### Configuration
+
+Three config keys control the FSM:
+
+```bash
+# 1. Define your pipeline (the ordered happy path)
+nd config set status.sequence "open,in_progress,review,qa,closed"
+
+# 2. Optionally restrict exits from specific statuses
+nd config set status.exit_rules "blocked:open,in_progress"
+
+# 3. Enable enforcement
+nd config set status.fsm true
+```
+
+### Sequence Rules
+
+When FSM is enabled, statuses that appear in the sequence follow two rules:
+
+- **Forward**: must advance exactly one step (no skipping)
+- **Backward**: can return to any earlier step (rework)
+
+Statuses NOT in the sequence (like `rejected`) are unrestricted -- they can be entered from or exited to any state. This is the escape hatch for off-pipeline states.
+
+### Exit Rules
+
+`status.exit_rules` restricts where specific statuses can transition to. Format: `status:target1,target2;status:target1,target2`
+
+When a status has an exit rule, it can ONLY go to the listed targets -- sequence rules do not apply to it.
+
+### Example: Kanban with Review Gate
+
+```bash
+nd config set status.custom "review,qa,rejected"
+nd config set status.sequence "open,in_progress,review,qa,closed"
+nd config set status.exit_rules "blocked:open,in_progress;rejected:in_progress"
+nd config set status.fsm true
+```
+
+This enforces:
+- Work flows `open -> in_progress -> review -> qa -> closed` (one step at a time)
+- Any step can go backward (e.g. `qa -> in_progress` for rework)
+- `blocked` can only unblock to `open` or `in_progress`
+- `rejected` can only go back to `in_progress`
+- `blocked` and `rejected` can be entered from any non-closed state (off-sequence)
+- `nd close` requires the issue to be at `qa` (the step before `closed`)
+- `nd reopen` always works (goes to `open`)
+
+### Example: Simple Three-Stage Pipeline
+
+```bash
+nd config set status.sequence "open,in_progress,closed"
+nd config set status.fsm true
+```
+
+No custom statuses, no exit rules. Just enforces that work goes `open -> in_progress -> closed` without skipping steps.
+
+### Without FSM
+
+When `status.fsm` is `false` (the default), all transitions are allowed. Custom statuses still work for labeling -- you just don't get enforcement.
+
 ## CLI Output
 
 nd uses colored output with the Ayu theme for terminal display. Status icons provide at-a-glance scannability:
@@ -88,11 +184,13 @@ nd uses colored output with the Ayu theme for terminal display. Status icons pro
 ❄  deferred     Scheduled for later (muted)
 ```
 
+Custom statuses display with `◇` and the status name.
+
 List output uses a compact format with colored priority and type indicators:
 
 ```
-○ PROJ-a3f8 [● P1] [feature] @alice - Implement user auth
-● PROJ-b7c2 [● P0] [bug] @bob - Fix login crash
+○ PROJ-a3f8 [P1] [feature] @alice - Implement user auth
+● PROJ-b7c2 [P0] [bug] @bob - Fix login crash
 ```
 
 Color is automatically disabled for piped output (non-TTY). Respects `NO_COLOR`, `CLICOLOR=0`, and `CLICOLOR_FORCE` environment variables.
@@ -142,6 +240,10 @@ Using bcrypt with 12 rounds per OWASP recommendation...
 ## Notes
 Spike complete. Chose Authorization Code flow over Implicit.
 
+## Links
+- Blocks: [[PROJ-d9e1]]
+- Blocked by: [[PROJ-b3c0]]
+
 ## Comments
 
 ### 2026-02-23T20:15:00Z alice
@@ -154,7 +256,7 @@ Every issue is a file you can read with `cat`, search with `grep`, diff with `gi
 
 ```
 .vault/
-  .nd.yaml            # Config: version, prefix, created_by
+  .nd.yaml            # Config: version, prefix, statuses, FSM rules
   issues/             # One .md file per issue
     PROJ-a3f8.md
     PROJ-b7c2.md
@@ -162,6 +264,22 @@ Every issue is a file you can read with `cat`, search with `grep`, diff with `gi
   .trash/             # Soft-deleted issues
   .vlt.lock           # Advisory file lock
 ```
+
+### Configuration File
+
+`.nd.yaml` stores all vault-level settings:
+
+```yaml
+version: "1"
+prefix: PROJ
+created_by: alice
+status_custom: "review,qa,rejected"
+status_sequence: "open,in_progress,review,qa,closed"
+status_fsm: true
+status_exit_rules: "blocked:open,in_progress;rejected:in_progress"
+```
+
+Manage it via `nd config set/get/list` or edit directly.
 
 ## Command Reference
 
@@ -173,6 +291,29 @@ nd init --prefix=PROJ [--vault=PATH] [--author=NAME]
 
 Creates the vault directory structure and `.nd.yaml` config. Prefix is required -- it becomes part of every issue ID (e.g., `PROJ-a3f8`).
 
+### Configuration
+
+```bash
+nd config set <key> <value>   # Set a config value
+nd config get <key>            # Get a config value
+nd config list                 # List all config values
+```
+
+Available keys:
+
+| Key | Description | Example |
+|-----|-------------|---------|
+| `status.custom` | Comma-separated custom statuses | `review,qa,rejected` |
+| `status.sequence` | Ordered pipeline for FSM | `open,in_progress,review,qa,closed` |
+| `status.fsm` | Enable/disable FSM enforcement | `true` / `false` |
+| `status.exit_rules` | Restrict exits from statuses | `blocked:open,in_progress` |
+
+Validation rules:
+- Custom status names must be lowercase alphanumeric/underscore and not collide with built-ins
+- Sequence statuses must be defined (built-in or custom), no duplicates
+- Enabling FSM requires a non-empty sequence
+- Exit rule statuses and targets must be valid (built-in or custom)
+
 ### Issue Creation
 
 ```bash
@@ -183,23 +324,34 @@ nd create "Title" [flags]
   --assignee         Assignee name
   --labels           Comma-separated labels
   --parent           Parent issue ID (for epic children)
+  --body-file        Read description from file (- for stdin)
 ```
 
-IDs are generated as `PREFIX-HASH` (4 base36 chars from SHA-256). Children use dot notation: `PROJ-a3f8.1`, `PROJ-a3f8.2`.
+### Quick Capture
+
+```bash
+nd q "Title" [flags]   # Alias for create with minimal flags
+```
 
 ### Listing and Filtering
 
 ```bash
 nd list [flags]
-  -s, --status       Filter: open, in_progress, blocked, deferred, closed, all
+  -s, --status       Filter: open, in_progress, blocked, deferred, closed, all, or any custom status
   --type             Filter by issue type
   -a, --assignee     Filter by assignee
   -l, --label        Filter by label
   -p, --priority     Filter by priority (0-4 or P0-P4)
+  --parent           Filter by parent issue ID
+  --no-parent        Show only issues without a parent
   --sort             Sort by: priority (default), created, updated, id
   -r, --reverse      Reverse sort order
   -n, --limit        Max results (default: 50, 0 for unlimited)
   --all              Show all issues including closed
+  --created-after    Filter by creation date
+  --created-before   Filter by creation date
+  --updated-after    Filter by update date
+  --updated-before   Filter by update date
 ```
 
 Default view shows non-closed issues sorted by priority.
@@ -216,23 +368,51 @@ nd show <id> [--short] [--json]
 
 ```bash
 nd update <id> [flags]
-  --status          New status
+  --status          New status (built-in or custom)
   --title           New title
   --priority        New priority (0-4 or P0-P4)
   --assignee        New assignee
   --type            New type
   -d, --description New description
+  --body-file       Read description from file (- for stdin)
   --append-notes    Append text to Notes section
+  --parent          Set parent issue ID (empty to clear)
+  --set-labels      Replace all labels (comma-separated, empty to clear)
+  --add-label       Add label(s)
+  --remove-label    Remove label(s)
 ```
+
+When FSM is enabled, `--status` transitions are validated against the configured sequence and exit rules.
+
+### Editing Issues
+
+```bash
+nd edit <id>   # Open issue in $EDITOR
+```
+
+Opens the issue file in your editor. After saving, nd refreshes the content hash and Links section.
 
 ### Closing and Reopening
 
 ```bash
-nd close <id> [id...] [--reason="explanation"]
+nd close <id> [id...] [--reason="explanation"] [--suggest-next]
 nd reopen <id>
 ```
 
-Close accepts multiple IDs for batch operations. Closing sets `closed_at` and optionally `close_reason`. Reopening clears both.
+Close accepts multiple IDs for batch operations. Closing sets `closed_at` and optionally `close_reason`. Reopening clears both and sets status to `open`.
+
+When FSM is enabled, `nd close` requires the issue to be at the step immediately before `closed` in the sequence. `nd reopen` is always allowed.
+
+`--suggest-next` shows the next ready issue after closing.
+
+### Deferring
+
+```bash
+nd defer <id> [--until=YYYY-MM-DD]
+nd undefer <id>
+```
+
+Deferring sets status to `deferred` with an optional target date. Undefer restores to `open`.
 
 ### Dependencies
 
@@ -240,18 +420,23 @@ Close accepts multiple IDs for batch operations. Closing sets `closed_at` and op
 nd dep add <issue> <depends-on>    # issue depends on depends-on
 nd dep rm <issue> <depends-on>     # Remove dependency
 nd dep list <id>                   # Show all deps for an issue
+nd dep relate <a> <b>              # Bidirectional related link
+nd dep unrelate <a> <b>            # Remove related link
+nd dep cycles                      # Detect dependency cycles
+nd dep tree <id>                   # Show dependency tree
 ```
 
-Dependencies are bidirectional: `nd dep add A B` adds B to A's `blocked_by` AND A to B's `blocks`. Removing cleans both sides.
+Dependencies are bidirectional: `nd dep add A B` adds B to A's `blocked_by` AND A to B's `blocks`. Removing moves the reference to `was_blocked_by` for historical tracking.
 
 ### Finding Work
 
 ```bash
 nd ready [--assignee=NAME] [--sort=priority] [-n LIMIT]
 nd blocked [--verbose]
+nd stale [--days=N]
 ```
 
-`ready` shows issues with no open blockers. `blocked` shows issues waiting on dependencies. With `--verbose`, blocked also shows which issues are blocking each one.
+`ready` shows issues with no open blockers. `blocked` shows issues waiting on dependencies. `stale` shows issues not updated in N days (default: 14).
 
 ### Search
 
@@ -281,8 +466,10 @@ Comments are appended to the `## Comments` section with RFC3339 timestamps and a
 ### Epics
 
 ```bash
-nd epic status <id>    # Progress summary (open/closed/blocked counts, %)
-nd epic tree <id>      # Hierarchical tree view with status markers
+nd epic status <id>        # Progress summary (open/closed/blocked counts, %)
+nd epic tree <id>          # Hierarchical tree view with status markers
+nd epic close-eligible     # List epics where all children are closed
+nd children <id>           # List child issues of a parent
 ```
 
 Epic children are found by matching the `parent` field. Tree view uses status markers: `[ ]` open, `[>]` in progress, `[!]` blocked, `[x]` closed.
@@ -291,9 +478,18 @@ Epic children are found by matching the `parent` field. Tree view uses status ma
 
 ```bash
 nd stats [--json]
+nd count [--status=STATUS]
 ```
 
-Aggregate counts by status, type, and priority.
+`stats` shows aggregate counts by status (including custom statuses), type, and priority. `count` returns a single number for scripting.
+
+### DAG Visualization
+
+```bash
+nd graph [--status=STATUS] [--all]
+```
+
+Renders the dependency graph as a terminal DAG with status-colored nodes and directed edges.
 
 ### AI Context
 
@@ -309,7 +505,7 @@ Outputs a structured summary for AI context injection: total counts, ready work,
 nd import --from-beads <path-to-jsonl>
 ```
 
-Parses a beads JSONL export and creates vault issue files. Preserves original IDs, timestamps, status, labels, notes, and design content.
+Parses a beads JSONL export and creates vault issue files. Preserves original IDs, timestamps, status (including custom statuses), labels, notes, and design content. Infers parent-child relationships from dotted IDs and cross-references.
 
 ### Vault Health
 
@@ -321,9 +517,18 @@ Validates:
 1. Content hash integrity (SHA-256 of body matches stored hash)
 2. Bidirectional dependency consistency (A blocks B <-> B blocked_by A)
 3. Reference validity (no deps pointing to nonexistent issues)
-4. Field validation (required fields present, enums valid)
+4. Field validation (required fields present, enums valid, custom statuses recognized)
+5. Links section integrity (## Links present with correct wikilinks)
 
-With `--fix`, automatically repairs hash mismatches and broken dependency references.
+With `--fix`, automatically repairs hash mismatches, broken dependency references, and missing Links sections.
+
+### Deleting Issues
+
+```bash
+nd delete <id> [--permanent]
+```
+
+Soft-deletes to `.trash/` by default. `--permanent` removes the file entirely. Cleans up dependency references on both sides.
 
 ### Global Flags
 
@@ -348,17 +553,32 @@ All commands support:
 
 ## Status Lifecycle
 
+### Built-in Statuses
+
 ```
 open --> in_progress --> closed
   |          |
   v          v
-deferred   blocked --> in_progress --> closed
-                              |
-                              v
-                           closed
+deferred   blocked --> open
 ```
 
-Closed issues can only transition back to `open` via `nd reopen`.
+These 5 statuses are always available. Closed issues can only transition back to `open` via `nd reopen`.
+
+### With Custom Statuses and FSM
+
+When you configure custom statuses and enable the FSM, the lifecycle is defined by your sequence and exit rules. For example, a kanban pipeline:
+
+```
+open --> in_progress --> review --> qa --> closed
+              |           |        |
+              v           v        v
+           blocked    (backward to any earlier step)
+              |
+              v
+   open or in_progress (exit rule)
+```
+
+The FSM is entirely configuration-driven. No workflow is hardcoded.
 
 ## Issue Types
 
@@ -381,8 +601,8 @@ nd (Go CLI, cobra)
   internal/
     model/           -- Issue struct, Status/Priority/Type enums, validation
     idgen/           -- SHA-256 + base36 collision-resistant ID generation
-    store/           -- Wraps vlt.Vault for issue CRUD, deps, filtering
-    graph/           -- In-memory dependency graph: ready, blocked, cycles, epics
+    store/           -- Wraps vlt.Vault for issue CRUD, deps, filtering, FSM
+    graph/           -- In-memory dependency graph: ready, blocked, cycles, epics, DAG
     enforce/         -- Content hashing, validation rules
     format/          -- Table, detail, JSON, prime context output
     ui/              -- Terminal styling (Ayu theme), markdown rendering, TTY detection
@@ -398,7 +618,7 @@ make vet      # Go vet
 make build    # Build binary
 ```
 
-Unit tests cover model validation, ID generation (base36 encoding), content hashing, and graph traversal. Integration tests create real temp vaults and run full workflows (init -> create -> dep -> ready -> close -> stats) with no mocks.
+Unit tests cover model validation, ID generation, content hashing, graph traversal, config round-tripping, and FSM transition enforcement (forward steps, backward rework, exit rules, sequence skipping). Integration tests create real temp vaults and run full workflows with no mocks: init, create, dep, ready, close, custom status transitions, and FSM enforcement.
 
 ## License
 

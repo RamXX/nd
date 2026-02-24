@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/RamXX/nd/internal/graph"
 	"github.com/RamXX/nd/internal/store"
@@ -39,6 +40,21 @@ var statsCmd = &cobra.Command{
 		fmt.Printf("Blocked:     %d\n", st.Blocked)
 		fmt.Printf("Deferred:    %d\n", st.Deferred)
 		fmt.Printf("Closed:      %d\n", st.Closed)
+
+		// Display any custom status counts.
+		builtins := map[string]bool{
+			"open": true, "in_progress": true, "blocked": true,
+			"deferred": true, "closed": true,
+		}
+		for status, count := range st.ByStatus {
+			if !builtins[status] {
+				label := strings.ReplaceAll(status, "_", " ")
+				if len(label) > 0 {
+					label = strings.ToUpper(label[:1]) + label[1:]
+				}
+				fmt.Printf("%-13s%d\n", label+":", count)
+			}
+		}
 
 		if len(st.ByType) > 0 {
 			fmt.Println("\nBy Type:")

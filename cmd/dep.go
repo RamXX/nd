@@ -93,8 +93,59 @@ var depListCmd = &cobra.Command{
 				format.Short(os.Stdout, b)
 			}
 		}
-		if len(issue.BlockedBy) == 0 && len(issue.Blocks) == 0 {
+		if len(issue.Related) > 0 {
+			fmt.Printf("%s related to:\n", id)
+			for _, rID := range issue.Related {
+				r, err := s.ReadIssue(rID)
+				if err != nil {
+					fmt.Printf("  %s (unreadable)\n", rID)
+					continue
+				}
+				format.Short(os.Stdout, r)
+			}
+		}
+		if len(issue.BlockedBy) == 0 && len(issue.Blocks) == 0 && len(issue.Related) == 0 {
 			fmt.Printf("%s has no dependencies\n", id)
+		}
+		return nil
+	},
+}
+
+var depRelateCmd = &cobra.Command{
+	Use:   "relate <issue-a> <issue-b>",
+	Short: "Add bidirectional related link between two issues",
+	Args:  cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		a, b := args[0], args[1]
+		s, err := store.Open(resolveVaultDir())
+		if err != nil {
+			return err
+		}
+		if err := s.AddRelated(a, b); err != nil {
+			return err
+		}
+		if !quiet {
+			fmt.Printf("%s and %s are now related\n", a, b)
+		}
+		return nil
+	},
+}
+
+var depUnrelateCmd = &cobra.Command{
+	Use:   "unrelate <issue-a> <issue-b>",
+	Short: "Remove bidirectional related link between two issues",
+	Args:  cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		a, b := args[0], args[1]
+		s, err := store.Open(resolveVaultDir())
+		if err != nil {
+			return err
+		}
+		if err := s.RemoveRelated(a, b); err != nil {
+			return err
+		}
+		if !quiet {
+			fmt.Printf("%s and %s are no longer related\n", a, b)
 		}
 		return nil
 	},
@@ -187,6 +238,8 @@ func init() {
 	depCmd.AddCommand(depAddCmd)
 	depCmd.AddCommand(depRmCmd)
 	depCmd.AddCommand(depListCmd)
+	depCmd.AddCommand(depRelateCmd)
+	depCmd.AddCommand(depUnrelateCmd)
 	depCmd.AddCommand(depCyclesCmd)
 	depCmd.AddCommand(depTreeCmd)
 	rootCmd.AddCommand(depCmd)

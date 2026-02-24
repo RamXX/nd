@@ -29,7 +29,7 @@ var updateCmd = &cobra.Command{
 
 		if cmd.Flags().Changed("status") {
 			v, _ := cmd.Flags().GetString("status")
-			st, err := model.ParseStatus(v)
+			st, err := model.ParseStatusWithCustom(v, s.CustomStatuses())
 			if err != nil {
 				return err
 			}

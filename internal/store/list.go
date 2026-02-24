@@ -60,7 +60,7 @@ func (s *Store) ListIssues(opts FilterOptions) ([]*model.Issue, error) {
 		if r.err != nil {
 			continue // skip unreadable issues
 		}
-		if matchesFilter(r.issue, opts) {
+		if s.matchesFilter(r.issue, opts) {
 			issues = issues[:len(issues):len(issues)]
 			issues = append(issues, r.issue)
 		}
@@ -74,7 +74,7 @@ func (s *Store) ListIssues(opts FilterOptions) ([]*model.Issue, error) {
 	return issues, nil
 }
 
-func matchesFilter(issue *model.Issue, opts FilterOptions) bool {
+func (s *Store) matchesFilter(issue *model.Issue, opts FilterOptions) bool {
 	if opts.Status != "" {
 		switch opts.Status {
 		case "all":
@@ -84,7 +84,7 @@ func matchesFilter(issue *model.Issue, opts FilterOptions) bool {
 				return false
 			}
 		default:
-			st, err := model.ParseStatus(opts.Status)
+			st, err := model.ParseStatusWithCustom(opts.Status, s.CustomStatuses())
 			if err != nil {
 				return false
 			}

@@ -166,9 +166,13 @@ func TestFullWorkflow(t *testing.T) {
 		t.Errorf("taskB should have no blockers after removal: %v", taskBAfter.BlockedBy)
 	}
 
-	// Verify wikilinks disappear after RemoveDependency.
-	if strings.Contains(taskBAfter.Body, "[["+taskA.ID+"]]") {
-		t.Errorf("taskB body should not contain wikilink to taskA after RemoveDependency")
+	// Verify historical relationship preserved in was_blocked_by.
+	if !containsStr(taskBAfter.WasBlockedBy, taskA.ID) {
+		t.Errorf("taskB.WasBlockedBy should contain taskA: %v", taskBAfter.WasBlockedBy)
+	}
+	// Wikilink still present via was_blocked_by history.
+	if !strings.Contains(taskBAfter.Body, "Was blocked by: [["+taskA.ID+"]]") {
+		t.Errorf("taskB body should contain 'Was blocked by' wikilink to taskA")
 	}
 
 	// 12. Update fields.
@@ -234,6 +238,263 @@ func TestSearchIntegration(t *testing.T) {
 	}
 	if len(results) != 1 {
 		t.Errorf("expected 1 result for 'Dolt', got %d", len(results))
+	}
+}
+
+func TestMigrateWorkflow(t *testing.T) {
+	dir := t.TempDir()
+
+	s, err := store.Init(dir, "MIG", "migrate-tester")
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	// Create issues that simulate beads import (Pass 1).
+	epic, err := s.CreateIssueWithID("MIG-epic1", "Auth Epic", "Implement auth", "epic", 1, "", nil, "")
+	if err != nil {
+		t.Fatalf("create epic: %v", err)
+	}
+
+	child1, err := s.CreateIssueWithID("MIG-ch01", "Design auth", "Design the flow", "task", 1, "alice", nil, "")
+	if err != nil {
+		t.Fatalf("create child1: %v", err)
+	}
+
+	child2, err := s.CreateIssueWithID("MIG-ch02", "Implement auth", "Build the flow", "task", 1, "bob", nil, "")
+	if err != nil {
+		t.Fatalf("create child2: %v", err)
+	}
+
+	related1, err := s.CreateIssueWithID("MIG-rel1", "Research OAuth", "Investigate providers", "task", 2, "", nil, "")
+	if err != nil {
+		t.Fatalf("create related1: %v", err)
+	}
+
+	// Pass 2: Wire dependencies.
+	// parent-child: child1 -> epic
+	if err := s.SetParent(child1.ID, epic.ID); err != nil {
+		t.Fatalf("SetParent child1: %v", err)
+	}
+	// parent-child: child2 -> epic
+	if err := s.SetParent(child2.ID, epic.ID); err != nil {
+		t.Fatalf("SetParent child2: %v", err)
+	}
+	// blocks: child2 blocked by child1
+	if err := s.AddDependency(child2.ID, child1.ID); err != nil {
+		t.Fatalf("AddDependency: %v", err)
+	}
+	// related: related1 related to child1
+	if err := s.AddRelated(related1.ID, child1.ID); err != nil {
+		t.Fatalf("AddRelated: %v", err)
+	}
+
+	// Verify parent-child.
+	ch1Read, _ := s.ReadIssue(child1.ID)
+	if ch1Read.Parent != epic.ID {
+		t.Errorf("child1 parent = %q, want %q", ch1Read.Parent, epic.ID)
+	}
+	ch2Read, _ := s.ReadIssue(child2.ID)
+	if ch2Read.Parent != epic.ID {
+		t.Errorf("child2 parent = %q, want %q", ch2Read.Parent, epic.ID)
+	}
+
+	// Verify blocks.
+	if !containsStr(ch2Read.BlockedBy, child1.ID) {
+		t.Errorf("child2 should be blocked by child1: %v", ch2Read.BlockedBy)
+	}
+	ch1Read, _ = s.ReadIssue(child1.ID) // re-read after AddDependency updated it
+	if !containsStr(ch1Read.Blocks, child2.ID) {
+		t.Errorf("child1 should block child2: %v", ch1Read.Blocks)
+	}
+
+	// Verify related.
+	rel1Read, _ := s.ReadIssue(related1.ID)
+	if !containsStr(rel1Read.Related, child1.ID) {
+		t.Errorf("related1 should relate to child1: %v", rel1Read.Related)
+	}
+	ch1Read, _ = s.ReadIssue(child1.ID) // re-read after AddRelated
+	if !containsStr(ch1Read.Related, related1.ID) {
+		t.Errorf("child1 should relate to related1: %v", ch1Read.Related)
+	}
+
+	// Verify wikilinks in body.
+	if !strings.Contains(ch1Read.Body, "[["+epic.ID+"]]") {
+		t.Errorf("child1 body should have wikilink to parent epic")
+	}
+	if !strings.Contains(ch2Read.Body, "[["+child1.ID+"]]") {
+		t.Errorf("child2 body should have wikilink to blocker child1")
+	}
+	if !strings.Contains(rel1Read.Body, "[["+child1.ID+"]]") {
+		t.Errorf("related1 body should have wikilink to related child1")
+	}
+
+	// Verify graph connectivity.
+	all, err := s.ListIssues(store.FilterOptions{})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(all) != 4 {
+		t.Fatalf("expected 4 issues, got %d", len(all))
+	}
+
+	g := graph.Build(all)
+
+	// Epic tree should show 2 children.
+	tree := g.EpicTree(epic.ID)
+	if tree == nil {
+		t.Fatal("epic tree should not be nil")
+	}
+	if len(tree.Children) != 2 {
+		t.Errorf("epic should have 2 children, got %d", len(tree.Children))
+	}
+
+	// child2 should be blocked.
+	blocked := g.Blocked()
+	blockedIDs := idsOf(blocked)
+	if !containsStr(blockedIDs, child2.ID) {
+		t.Errorf("child2 should be blocked: %v", blockedIDs)
+	}
+}
+
+func TestCustomStatusWorkflow(t *testing.T) {
+	dir := t.TempDir()
+	s, err := store.Init(dir, "CST", "tester")
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	// 1. Configure custom statuses.
+	if err := s.SetConfigValue("status.custom", "delivered,accepted,rejected"); err != nil {
+		t.Fatalf("set custom: %v", err)
+	}
+
+	// 2. Create an issue.
+	issue, err := s.CreateIssue("Custom status test", "Test custom statuses", "task", 2, "", nil, "")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	// 3. Update to custom status.
+	customSt, err := model.ParseStatusWithCustom("delivered", s.CustomStatuses())
+	if err != nil {
+		t.Fatalf("parse custom status: %v", err)
+	}
+	if err := s.UpdateStatus(issue.ID, customSt); err != nil {
+		t.Fatalf("update to delivered: %v", err)
+	}
+
+	// 4. Verify read back.
+	read, err := s.ReadIssue(issue.ID)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if read.Status != "delivered" {
+		t.Errorf("status = %q, want delivered", read.Status)
+	}
+
+	// 5. Filter by custom status.
+	filtered, err := s.ListIssues(store.FilterOptions{Status: "delivered"})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(filtered) != 1 {
+		t.Errorf("expected 1 delivered issue, got %d", len(filtered))
+	}
+
+	// 6. Stats should include custom status.
+	all, _ := s.ListIssues(store.FilterOptions{})
+	g := graph.Build(all)
+	st := g.Stats()
+	if st.ByStatus["delivered"] != 1 {
+		t.Errorf("ByStatus[delivered] = %d, want 1", st.ByStatus["delivered"])
+	}
+
+	// 7. Doctor should not complain about custom status.
+	for _, i := range all {
+		if err := enforce.ValidateIssueWithCustom(i, s.CustomStatuses()); err != nil {
+			t.Errorf("ValidateIssueWithCustom(%s): %v", i.ID, err)
+		}
+	}
+}
+
+func TestFSMWorkflow(t *testing.T) {
+	dir := t.TempDir()
+	s, err := store.Init(dir, "FSM", "tester")
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	// Configure.
+	if err := s.SetConfigValue("status.custom", "delivered,accepted,rejected"); err != nil {
+		t.Fatalf("set custom: %v", err)
+	}
+	if err := s.SetConfigValue("status.sequence", "open,in_progress,delivered,accepted,closed"); err != nil {
+		t.Fatalf("set sequence: %v", err)
+	}
+	if err := s.SetConfigValue("status.exit_rules", "blocked:open,in_progress,deferred;deferred:open,in_progress,deferred"); err != nil {
+		t.Fatalf("set exit rules: %v", err)
+	}
+	if err := s.SetConfigValue("status.fsm", "true"); err != nil {
+		t.Fatalf("enable fsm: %v", err)
+	}
+
+	issue, err := s.CreateIssue("FSM test", "", "task", 2, "", nil, "")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	// Illegal: open -> delivered (skip).
+	if err := s.UpdateStatus(issue.ID, "delivered"); err == nil {
+		t.Error("open -> delivered should fail")
+	}
+
+	// Happy path: open -> in_progress -> delivered -> accepted -> close.
+	for _, next := range []model.Status{"in_progress", "delivered", "accepted"} {
+		if err := s.UpdateStatus(issue.ID, next); err != nil {
+			t.Fatalf("%s transition failed: %v", next, err)
+		}
+	}
+	if err := s.CloseIssue(issue.ID, "completed"); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	// Verify closed.
+	read, _ := s.ReadIssue(issue.ID)
+	if read.Status != model.StatusClosed {
+		t.Errorf("status = %q, want closed", read.Status)
+	}
+
+	// Reopen always works.
+	if err := s.ReopenIssue(issue.ID); err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	read, _ = s.ReadIssue(issue.ID)
+	if read.Status != model.StatusOpen {
+		t.Errorf("status after reopen = %q, want open", read.Status)
+	}
+
+	// Test blocked circuit-breaker.
+	_ = s.UpdateStatus(issue.ID, "in_progress")
+	_ = s.UpdateStatus(issue.ID, "blocked")
+
+	// blocked -> delivered: ERROR.
+	if err := s.UpdateStatus(issue.ID, "delivered"); err == nil {
+		t.Error("blocked -> delivered should fail")
+	}
+
+	// blocked -> in_progress: OK.
+	if err := s.UpdateStatus(issue.ID, "in_progress"); err != nil {
+		t.Errorf("blocked -> in_progress should succeed: %v", err)
+	}
+
+	// Test reject path.
+	_ = s.UpdateStatus(issue.ID, "delivered")
+	_ = s.UpdateStatus(issue.ID, "rejected")    // off-sequence entry: OK
+	_ = s.UpdateStatus(issue.ID, "in_progress") // off-sequence exit: OK
+	_ = s.UpdateStatus(issue.ID, "delivered")
+	_ = s.UpdateStatus(issue.ID, "accepted")
+	if err := s.CloseIssue(issue.ID, "done after rework"); err != nil {
+		t.Fatalf("close after rework: %v", err)
 	}
 }
 

@@ -163,15 +163,18 @@ type Stats struct {
 	Deferred   int
 	ByType     map[string]int
 	ByPriority map[int]int
+	ByStatus   map[string]int
 }
 
 func (g *Graph) Stats() Stats {
 	s := Stats{
 		ByType:     make(map[string]int),
 		ByPriority: make(map[int]int),
+		ByStatus:   make(map[string]int),
 	}
 	for _, issue := range g.nodes {
 		s.Total++
+		s.ByStatus[string(issue.Status)]++
 		switch issue.Status {
 		case model.StatusOpen:
 			s.Open++

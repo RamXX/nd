@@ -25,12 +25,38 @@ var validStatuses = map[Status]bool{
 	StatusClosed:     true,
 }
 
+// ParseStatus validates a status string against built-in statuses.
+// Use ParseStatusWithCustom to also accept custom statuses.
 func ParseStatus(s string) (Status, error) {
+	return ParseStatusWithCustom(s, nil)
+}
+
+// ParseStatusWithCustom validates a status string against built-in and custom statuses.
+func ParseStatusWithCustom(s string, custom []Status) (Status, error) {
 	st := Status(strings.ToLower(strings.TrimSpace(s)))
-	if !validStatuses[st] {
-		return "", fmt.Errorf("invalid status %q: must be one of open, in_progress, blocked, deferred, closed", s)
+	if validStatuses[st] {
+		return st, nil
 	}
-	return st, nil
+	for _, c := range custom {
+		if st == c {
+			return st, nil
+		}
+	}
+	names := BuiltinStatusNames()
+	for _, c := range custom {
+		names = append(names, string(c))
+	}
+	return "", fmt.Errorf("invalid status %q: must be one of %s", s, strings.Join(names, ", "))
+}
+
+// IsBuiltinStatus returns true if the string is one of the 5 built-in statuses.
+func IsBuiltinStatus(s string) bool {
+	return validStatuses[Status(strings.ToLower(strings.TrimSpace(s)))]
+}
+
+// BuiltinStatusNames returns the names of the 5 built-in statuses.
+func BuiltinStatusNames() []string {
+	return []string{"open", "in_progress", "blocked", "deferred", "closed"}
 }
 
 func (s Status) String() string { return string(s) }
@@ -126,9 +152,10 @@ type Issue struct {
 	Assignee    string    `yaml:"assignee,omitempty"`
 	Labels      []string  `yaml:"labels,omitempty"`
 	Parent      string    `yaml:"parent,omitempty"`
-	Blocks      []string  `yaml:"blocks,omitempty"`
-	BlockedBy   []string  `yaml:"blocked_by,omitempty"`
-	Related     []string  `yaml:"related,omitempty"`
+	Blocks         []string  `yaml:"blocks,omitempty"`
+	BlockedBy      []string  `yaml:"blocked_by,omitempty"`
+	WasBlockedBy   []string  `yaml:"was_blocked_by,omitempty"`
+	Related        []string  `yaml:"related,omitempty"`
 	CreatedAt   time.Time `yaml:"created_at"`
 	CreatedBy   string    `yaml:"created_by"`
 	UpdatedAt   time.Time `yaml:"updated_at"`
@@ -144,13 +171,18 @@ type Issue struct {
 
 // Validate checks that required fields are populated and values are in range.
 func (i *Issue) Validate() error {
+	return i.ValidateWithCustom(nil)
+}
+
+// ValidateWithCustom validates an issue, accepting custom statuses alongside built-ins.
+func (i *Issue) ValidateWithCustom(custom []Status) error {
 	if i.ID == "" {
 		return fmt.Errorf("issue ID is required")
 	}
 	if i.Title == "" {
 		return fmt.Errorf("issue title is required")
 	}
-	if !validStatuses[i.Status] {
+	if _, err := ParseStatusWithCustom(string(i.Status), custom); err != nil {
 		return fmt.Errorf("invalid status %q", i.Status)
 	}
 	if i.Priority < 0 || i.Priority > 4 {

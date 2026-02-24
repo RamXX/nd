@@ -46,6 +46,7 @@ func (s *Store) AddDependency(issueID, depID string) error {
 }
 
 // RemoveDependency removes a dependency between two issues.
+// The relationship is preserved in was_blocked_by for historical record.
 func (s *Store) RemoveDependency(issueID, depID string) error {
 	issue, err := s.ReadIssue(issueID)
 	if err != nil {
@@ -54,6 +55,14 @@ func (s *Store) RemoveDependency(issueID, depID string) error {
 	dep, err := s.ReadIssue(depID)
 	if err != nil {
 		return fmt.Errorf("dependency %s: %w", depID, err)
+	}
+
+	// Archive: add depID to issue's was_blocked_by if it was actually blocking.
+	if contains(issue.BlockedBy, depID) && !contains(issue.WasBlockedBy, depID) {
+		newWas := append(issue.WasBlockedBy, depID)
+		if err := s.setListProperty(issueID, "was_blocked_by", newWas); err != nil {
+			return err
+		}
 	}
 
 	// Remove depID from issue's blocked_by.
@@ -90,6 +99,68 @@ func contains(ss []string, s string) bool {
 		}
 	}
 	return false
+}
+
+// AddRelated adds a bidirectional related link between two issues.
+func (s *Store) AddRelated(issueID, relatedID string) error {
+	if issueID == relatedID {
+		return fmt.Errorf("an issue cannot relate to itself")
+	}
+
+	issue, err := s.ReadIssue(issueID)
+	if err != nil {
+		return fmt.Errorf("issue %s: %w", issueID, err)
+	}
+	rel, err := s.ReadIssue(relatedID)
+	if err != nil {
+		return fmt.Errorf("related %s: %w", relatedID, err)
+	}
+
+	if !contains(issue.Related, relatedID) {
+		newList := append(issue.Related, relatedID)
+		if err := s.setListProperty(issueID, "related", newList); err != nil {
+			return err
+		}
+	}
+
+	if !contains(rel.Related, issueID) {
+		newList := append(rel.Related, issueID)
+		if err := s.setListProperty(relatedID, "related", newList); err != nil {
+			return err
+		}
+	}
+
+	_ = s.UpdateLinksSection(issueID)
+	_ = s.UpdateLinksSection(relatedID)
+
+	return nil
+}
+
+// RemoveRelated removes a bidirectional related link between two issues.
+func (s *Store) RemoveRelated(issueID, relatedID string) error {
+	issue, err := s.ReadIssue(issueID)
+	if err != nil {
+		return fmt.Errorf("issue %s: %w", issueID, err)
+	}
+	rel, err := s.ReadIssue(relatedID)
+	if err != nil {
+		return fmt.Errorf("related %s: %w", relatedID, err)
+	}
+
+	newRelA := remove(issue.Related, relatedID)
+	if err := s.setListProperty(issueID, "related", newRelA); err != nil {
+		return err
+	}
+
+	newRelB := remove(rel.Related, issueID)
+	if err := s.setListProperty(relatedID, "related", newRelB); err != nil {
+		return err
+	}
+
+	_ = s.UpdateLinksSection(issueID)
+	_ = s.UpdateLinksSection(relatedID)
+
+	return nil
 }
 
 func remove(ss []string, s string) []string {

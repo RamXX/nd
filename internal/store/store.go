@@ -4,16 +4,23 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 
+	"github.com/RamXX/nd/internal/model"
 	"github.com/RamXX/vlt"
 	"gopkg.in/yaml.v3"
 )
 
 // Config holds vault-level nd configuration stored in .nd.yaml.
 type Config struct {
-	Version   string `yaml:"version"`
-	Prefix    string `yaml:"prefix"`
-	CreatedBy string `yaml:"created_by"`
+	Version         string `yaml:"version"`
+	Prefix          string `yaml:"prefix"`
+	CreatedBy       string `yaml:"created_by"`
+	StatusCustom    string `yaml:"status_custom,omitempty"`
+	StatusSequence  string `yaml:"status_sequence,omitempty"`
+	StatusFSM       bool   `yaml:"status_fsm,omitempty"`
+	StatusExitRules string `yaml:"status_exit_rules,omitempty"`
 }
 
 // Store wraps a vlt.Vault with issue-tracker operations.
@@ -91,4 +98,211 @@ func (s *Store) IssueExists(id string) bool {
 	p := filepath.Join(s.dir, "issues", id+".md")
 	_, err := os.Stat(p)
 	return err == nil
+}
+
+// CustomStatuses parses the status_custom config field into a slice of model.Status.
+func (s *Store) CustomStatuses() []model.Status {
+	return parseCSVStatuses(s.config.StatusCustom)
+}
+
+// StatusSequence parses the status_sequence config field into an ordered slice.
+func (s *Store) StatusSequence() []model.Status {
+	return parseCSVStatuses(s.config.StatusSequence)
+}
+
+// ExitRules parses the status_exit_rules config into a map of status -> allowed exit targets.
+// Format: "blocked:open,in_progress,deferred;deferred:open,in_progress,deferred"
+func (s *Store) ExitRules() map[model.Status][]model.Status {
+	return parseExitRules(s.config.StatusExitRules)
+}
+
+func parseExitRules(raw string) map[model.Status][]model.Status {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	result := make(map[model.Status][]model.Status)
+	for _, rule := range strings.Split(raw, ";") {
+		rule = strings.TrimSpace(rule)
+		if rule == "" {
+			continue
+		}
+		parts := strings.SplitN(rule, ":", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		from := model.Status(strings.TrimSpace(strings.ToLower(parts[0])))
+		targets := parseCSVStatuses(parts[1])
+		if len(targets) > 0 {
+			result[from] = targets
+		}
+	}
+	return result
+}
+
+func parseCSVStatuses(csv string) []model.Status {
+	csv = strings.TrimSpace(csv)
+	if csv == "" {
+		return nil
+	}
+	parts := strings.Split(csv, ",")
+	out := make([]model.Status, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, model.Status(strings.ToLower(p)))
+		}
+	}
+	return out
+}
+
+// SaveConfig writes the current config back to .nd.yaml.
+func (s *Store) SaveConfig() error {
+	data, err := yaml.Marshal(s.config)
+	if err != nil {
+		return fmt.Errorf("marshal config: %w", err)
+	}
+	return os.WriteFile(filepath.Join(s.dir, ".nd.yaml"), data, 0o644)
+}
+
+var validConfigKeyRe = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+
+// SetConfigValue sets a config field by dot-notation key with validation.
+func (s *Store) SetConfigValue(key, value string) error {
+	switch key {
+	case "status.custom":
+		if value != "" {
+			for _, name := range strings.Split(value, ",") {
+				name = strings.TrimSpace(strings.ToLower(name))
+				if name == "" {
+					continue
+				}
+				if !validConfigKeyRe.MatchString(name) {
+					return fmt.Errorf("invalid custom status name %q: must be lowercase alphanumeric/underscore", name)
+				}
+				if model.IsBuiltinStatus(name) {
+					return fmt.Errorf("custom status %q collides with built-in status", name)
+				}
+			}
+		}
+		s.config.StatusCustom = value
+
+	case "status.sequence":
+		if value != "" {
+			custom := s.CustomStatuses()
+			seen := make(map[string]bool)
+			for _, name := range strings.Split(value, ",") {
+				name = strings.TrimSpace(strings.ToLower(name))
+				if name == "" {
+					continue
+				}
+				if seen[name] {
+					return fmt.Errorf("duplicate status %q in sequence", name)
+				}
+				seen[name] = true
+				if !model.IsBuiltinStatus(name) {
+					found := false
+					for _, c := range custom {
+						if string(c) == name {
+							found = true
+							break
+						}
+					}
+					if !found {
+						return fmt.Errorf("status %q in sequence is not a built-in or custom status", name)
+					}
+				}
+			}
+		}
+		s.config.StatusSequence = value
+
+	case "status.fsm":
+		switch strings.ToLower(value) {
+		case "true", "1", "yes":
+			if s.config.StatusSequence == "" {
+				return fmt.Errorf("cannot enable FSM without a status sequence; set status.sequence first")
+			}
+			s.config.StatusFSM = true
+		case "false", "0", "no":
+			s.config.StatusFSM = false
+		default:
+			return fmt.Errorf("invalid boolean value %q for status.fsm", value)
+		}
+
+	case "status.exit_rules":
+		if value != "" {
+			custom := s.CustomStatuses()
+			for _, rule := range strings.Split(value, ";") {
+				rule = strings.TrimSpace(rule)
+				if rule == "" {
+					continue
+				}
+				parts := strings.SplitN(rule, ":", 2)
+				if len(parts) != 2 {
+					return fmt.Errorf("invalid exit rule %q: expected format status:target1,target2", rule)
+				}
+				fromName := strings.TrimSpace(strings.ToLower(parts[0]))
+				if _, err := model.ParseStatusWithCustom(fromName, custom); err != nil {
+					return fmt.Errorf("invalid status %q in exit rule: %w", fromName, err)
+				}
+				for _, target := range strings.Split(parts[1], ",") {
+					target = strings.TrimSpace(strings.ToLower(target))
+					if target == "" {
+						continue
+					}
+					if _, err := model.ParseStatusWithCustom(target, custom); err != nil {
+						return fmt.Errorf("invalid target %q in exit rule for %s: %w", target, fromName, err)
+					}
+				}
+			}
+		}
+		s.config.StatusExitRules = value
+
+	default:
+		return fmt.Errorf("unknown config key %q", key)
+	}
+
+	return s.SaveConfig()
+}
+
+// GetConfigValue returns the value of a config field by dot-notation key.
+func (s *Store) GetConfigValue(key string) (string, error) {
+	switch key {
+	case "version":
+		return s.config.Version, nil
+	case "prefix":
+		return s.config.Prefix, nil
+	case "created_by":
+		return s.config.CreatedBy, nil
+	case "status.custom":
+		return s.config.StatusCustom, nil
+	case "status.sequence":
+		return s.config.StatusSequence, nil
+	case "status.fsm":
+		if s.config.StatusFSM {
+			return "true", nil
+		}
+		return "false", nil
+	case "status.exit_rules":
+		return s.config.StatusExitRules, nil
+	default:
+		return "", fmt.Errorf("unknown config key %q", key)
+	}
+}
+
+// ConfigEntries returns all config fields as key-value pairs for listing.
+func (s *Store) ConfigEntries() [][2]string {
+	fsm := "false"
+	if s.config.StatusFSM {
+		fsm = "true"
+	}
+	return [][2]string{
+		{"version", s.config.Version},
+		{"prefix", s.config.Prefix},
+		{"created_by", s.config.CreatedBy},
+		{"status.custom", s.config.StatusCustom},
+		{"status.sequence", s.config.StatusSequence},
+		{"status.fsm", fsm},
+		{"status.exit_rules", s.config.StatusExitRules},
+	}
 }

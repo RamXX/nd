@@ -30,6 +30,12 @@ func (s *Store) UpdateStatus(id string, newStatus model.Status) error {
 		return fmt.Errorf("closed issues can only be reopened (set to open)")
 	}
 
+	if s.config.StatusFSM {
+		if err := s.validateFSMTransition(issue.Status, newStatus); err != nil {
+			return err
+		}
+	}
+
 	if err := s.vault.PropertySet(id, "status", string(newStatus)); err != nil {
 		return err
 	}
@@ -44,6 +50,12 @@ func (s *Store) CloseIssue(id, reason string) error {
 	}
 	if issue.Status == model.StatusClosed {
 		return fmt.Errorf("issue %s is already closed", id)
+	}
+
+	if s.config.StatusFSM {
+		if err := s.validateFSMTransition(issue.Status, model.StatusClosed); err != nil {
+			return err
+		}
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -206,4 +218,57 @@ func (s *Store) UnDeferIssue(id string) error {
 func (s *Store) touchUpdatedAt(id string) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 	return s.vault.PropertySet(id, "updated_at", now)
+}
+
+// validateFSMTransition enforces the FSM transition rules.
+// The engine is generic -- all behavior is driven by configuration:
+//   - status.sequence: forward +1 only, backward any
+//   - status.exit_rules: restrict exits from specific statuses to listed targets
+//   - Off-sequence statuses are unrestricted (escape hatch)
+func (s *Store) validateFSMTransition(from, to model.Status) error {
+	// Check exit rules first -- these override sequence logic.
+	exitRules := s.ExitRules()
+	if allowed, ok := exitRules[from]; ok {
+		for _, a := range allowed {
+			if a == to {
+				return nil
+			}
+		}
+		targets := make([]string, len(allowed))
+		for i, a := range allowed {
+			targets[i] = string(a)
+		}
+		return fmt.Errorf("FSM: cannot transition from %s to %s; allowed targets: %s",
+			from, to, strings.Join(targets, ", "))
+	}
+
+	seq := s.StatusSequence()
+	if len(seq) == 0 {
+		return nil
+	}
+
+	fromIdx := indexInSequence(seq, from)
+	toIdx := indexInSequence(seq, to)
+
+	// Both in sequence: forward must be +1, backward is always allowed.
+	if fromIdx >= 0 && toIdx >= 0 {
+		if toIdx > fromIdx {
+			if toIdx != fromIdx+1 {
+				return fmt.Errorf("FSM: cannot skip from %s to %s; next step is %s", from, to, seq[fromIdx+1])
+			}
+		}
+		return nil
+	}
+
+	// One or both off-sequence: allow (escape hatch for custom statuses like rejected).
+	return nil
+}
+
+func indexInSequence(seq []model.Status, st model.Status) int {
+	for i, s := range seq {
+		if s == st {
+			return i
+		}
+	}
+	return -1
 }

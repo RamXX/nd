@@ -263,13 +263,20 @@ func TestUpdateLinksSection(t *testing.T) {
 		t.Errorf("A body should contain wikilink to B:\n%s", aRead.Body)
 	}
 
-	// Remove dependency and verify wikilinks disappear.
+	// Remove dependency and verify active block wikilink moves to was_blocked_by.
 	if err := s.RemoveDependency(b.ID, a.ID); err != nil {
 		t.Fatalf("remove dep: %v", err)
 	}
 	bAfter, _ := s.ReadIssue(b.ID)
-	if strings.Contains(bAfter.Body, "[["+a.ID+"]]") {
-		t.Errorf("B body should not contain wikilink to A after removal:\n%s", bAfter.Body)
+	if len(bAfter.BlockedBy) != 0 {
+		t.Errorf("B should have no active blockers: %v", bAfter.BlockedBy)
+	}
+	if !contains(bAfter.WasBlockedBy, a.ID) {
+		t.Errorf("B.WasBlockedBy should contain A: %v", bAfter.WasBlockedBy)
+	}
+	// Wikilink still present via was_blocked_by.
+	if !strings.Contains(bAfter.Body, "Was blocked by: [["+a.ID+"]]") {
+		t.Errorf("B body should contain 'Was blocked by' wikilink to A:\n%s", bAfter.Body)
 	}
 }
 
@@ -391,5 +398,391 @@ func TestLinksMigration(t *testing.T) {
 	read2, _ := s.ReadIssue(issue.ID)
 	if !strings.Contains(read2.Body, "\n## Links\n") {
 		t.Errorf("after UpdateLinksSection, ## Links should still exist:\n%s", read2.Body)
+	}
+}
+
+func TestConfigCustomStatuses(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Init(dir, "TST", "tester")
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	// Initially empty.
+	if got := s.CustomStatuses(); len(got) != 0 {
+		t.Errorf("expected no custom statuses, got %v", got)
+	}
+
+	// Set custom statuses.
+	if err := s.SetConfigValue("status.custom", "delivered,accepted,rejected"); err != nil {
+		t.Fatalf("SetConfigValue: %v", err)
+	}
+
+	custom := s.CustomStatuses()
+	if len(custom) != 3 {
+		t.Fatalf("expected 3 custom statuses, got %d", len(custom))
+	}
+	if custom[0] != "delivered" || custom[1] != "accepted" || custom[2] != "rejected" {
+		t.Errorf("unexpected custom statuses: %v", custom)
+	}
+}
+
+func TestConfigSetAndGet(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Init(dir, "TST", "tester")
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	// Set and get.
+	if err := s.SetConfigValue("status.custom", "delivered"); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+	val, err := s.GetConfigValue("status.custom")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if val != "delivered" {
+		t.Errorf("got %q, want delivered", val)
+	}
+
+	// Reopen and verify persistence.
+	s2, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	val2, _ := s2.GetConfigValue("status.custom")
+	if val2 != "delivered" {
+		t.Errorf("after reopen: got %q, want delivered", val2)
+	}
+}
+
+func TestConfigValidation(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Init(dir, "TST", "tester")
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	// Reject built-in collision.
+	if err := s.SetConfigValue("status.custom", "open"); err == nil {
+		t.Error("expected error for built-in collision")
+	}
+
+	// Reject bad characters.
+	if err := s.SetConfigValue("status.custom", "has spaces"); err == nil {
+		t.Error("expected error for invalid name")
+	}
+
+	// Reject unknown key.
+	if err := s.SetConfigValue("bogus.key", "val"); err == nil {
+		t.Error("expected error for unknown key")
+	}
+
+	// Set custom, then sequence.
+	if err := s.SetConfigValue("status.custom", "delivered,accepted"); err != nil {
+		t.Fatalf("set custom: %v", err)
+	}
+
+	// Sequence with unknown status should fail.
+	if err := s.SetConfigValue("status.sequence", "open,in_progress,unknown,closed"); err == nil {
+		t.Error("expected error for unknown status in sequence")
+	}
+
+	// Sequence with duplicate should fail.
+	if err := s.SetConfigValue("status.sequence", "open,open,closed"); err == nil {
+		t.Error("expected error for duplicate in sequence")
+	}
+
+	// Valid sequence.
+	if err := s.SetConfigValue("status.sequence", "open,in_progress,delivered,accepted,closed"); err != nil {
+		t.Fatalf("set sequence: %v", err)
+	}
+
+	// FSM without sequence should fail (but we have one now, so test the opposite).
+	if err := s.SetConfigValue("status.fsm", "true"); err != nil {
+		t.Fatalf("enable fsm: %v", err)
+	}
+
+	// Verify FSM is enabled.
+	val, _ := s.GetConfigValue("status.fsm")
+	if val != "true" {
+		t.Errorf("fsm = %q, want true", val)
+	}
+}
+
+func TestFSMForwardOneStep(t *testing.T) {
+	dir := t.TempDir()
+	s := setupFSMStore(t, dir)
+
+	issue, _ := s.CreateIssue("Test", "", "task", 2, "", nil, "")
+
+	// open -> in_progress: OK (+1).
+	if err := s.UpdateStatus(issue.ID, "in_progress"); err != nil {
+		t.Errorf("open -> in_progress should succeed: %v", err)
+	}
+}
+
+func TestFSMForwardSkip(t *testing.T) {
+	dir := t.TempDir()
+	s := setupFSMStore(t, dir)
+
+	issue, _ := s.CreateIssue("Test", "", "task", 2, "", nil, "")
+
+	// open -> delivered: ERROR (skips in_progress).
+	if err := s.UpdateStatus(issue.ID, "delivered"); err == nil {
+		t.Error("open -> delivered should fail (skips in_progress)")
+	}
+}
+
+func TestFSMBackward(t *testing.T) {
+	dir := t.TempDir()
+	s := setupFSMStore(t, dir)
+
+	issue, _ := s.CreateIssue("Test", "", "task", 2, "", nil, "")
+
+	// Walk to delivered.
+	_ = s.UpdateStatus(issue.ID, "in_progress")
+	_ = s.UpdateStatus(issue.ID, "delivered")
+
+	// delivered -> in_progress: OK (backward always allowed).
+	if err := s.UpdateStatus(issue.ID, "in_progress"); err != nil {
+		t.Errorf("delivered -> in_progress should succeed: %v", err)
+	}
+}
+
+func TestFSMEscapeHatch(t *testing.T) {
+	dir := t.TempDir()
+	s := setupFSMStore(t, dir)
+
+	issue, _ := s.CreateIssue("Test", "", "task", 2, "", nil, "")
+
+	_ = s.UpdateStatus(issue.ID, "in_progress")
+	_ = s.UpdateStatus(issue.ID, "delivered")
+
+	// delivered -> rejected: OK (off-sequence entry).
+	if err := s.UpdateStatus(issue.ID, "rejected"); err != nil {
+		t.Errorf("delivered -> rejected should succeed: %v", err)
+	}
+
+	// rejected -> in_progress: OK (off-sequence exit).
+	if err := s.UpdateStatus(issue.ID, "in_progress"); err != nil {
+		t.Errorf("rejected -> in_progress should succeed: %v", err)
+	}
+}
+
+func TestFSMBlockedExit(t *testing.T) {
+	dir := t.TempDir()
+	s := setupFSMStore(t, dir)
+
+	issue, _ := s.CreateIssue("Test", "", "task", 2, "", nil, "")
+
+	_ = s.UpdateStatus(issue.ID, "in_progress")
+
+	// in_progress -> blocked: OK.
+	if err := s.UpdateStatus(issue.ID, "blocked"); err != nil {
+		t.Fatalf("in_progress -> blocked should succeed: %v", err)
+	}
+
+	// blocked -> in_progress: OK (allowed unblock target).
+	if err := s.UpdateStatus(issue.ID, "in_progress"); err != nil {
+		t.Errorf("blocked -> in_progress should succeed: %v", err)
+	}
+
+	// Block again.
+	_ = s.UpdateStatus(issue.ID, "blocked")
+
+	// blocked -> delivered: ERROR.
+	if err := s.UpdateStatus(issue.ID, "delivered"); err == nil {
+		t.Error("blocked -> delivered should fail")
+	}
+
+	// blocked -> accepted: ERROR.
+	if err := s.UpdateStatus(issue.ID, "accepted"); err == nil {
+		t.Error("blocked -> accepted should fail")
+	}
+
+	// blocked -> open: OK.
+	if err := s.UpdateStatus(issue.ID, "open"); err != nil {
+		t.Errorf("blocked -> open should succeed: %v", err)
+	}
+}
+
+func TestFSMBlockedExitWithoutRules(t *testing.T) {
+	dir := t.TempDir()
+	s := setupFSMStoreNoExitRules(t, dir)
+
+	issue, _ := s.CreateIssue("Test", "", "task", 2, "", nil, "")
+
+	_ = s.UpdateStatus(issue.ID, "in_progress")
+	_ = s.UpdateStatus(issue.ID, "blocked")
+
+	// Without exit rules, blocked -> delivered is allowed (off-sequence, no restriction).
+	if err := s.UpdateStatus(issue.ID, "delivered"); err != nil {
+		t.Errorf("without exit rules, blocked -> delivered should succeed: %v", err)
+	}
+}
+
+func TestFSMBlockedEntry(t *testing.T) {
+	dir := t.TempDir()
+	s := setupFSMStore(t, dir)
+
+	issue, _ := s.CreateIssue("Test", "", "task", 2, "", nil, "")
+
+	// open -> blocked: OK.
+	if err := s.UpdateStatus(issue.ID, "blocked"); err != nil {
+		t.Errorf("open -> blocked should succeed: %v", err)
+	}
+
+	_ = s.UpdateStatus(issue.ID, "in_progress")
+	_ = s.UpdateStatus(issue.ID, "delivered")
+
+	// delivered -> blocked: OK.
+	if err := s.UpdateStatus(issue.ID, "blocked"); err != nil {
+		t.Errorf("delivered -> blocked should succeed: %v", err)
+	}
+}
+
+func TestFSMCloseEnforcement(t *testing.T) {
+	dir := t.TempDir()
+	s := setupFSMStore(t, dir)
+
+	issue, _ := s.CreateIssue("Test", "", "task", 2, "", nil, "")
+
+	_ = s.UpdateStatus(issue.ID, "in_progress")
+	_ = s.UpdateStatus(issue.ID, "delivered")
+
+	// CloseIssue from delivered: ERROR (must be at accepted first).
+	if err := s.CloseIssue(issue.ID, "done"); err == nil {
+		t.Error("close from delivered should fail (must go through accepted)")
+	}
+
+	// Walk to accepted.
+	_ = s.UpdateStatus(issue.ID, "accepted")
+
+	// CloseIssue from accepted: OK.
+	if err := s.CloseIssue(issue.ID, "done"); err != nil {
+		t.Errorf("close from accepted should succeed: %v", err)
+	}
+}
+
+func TestFSMDisabled(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Init(dir, "TST", "tester")
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	// Set custom and sequence but NOT fsm.
+	_ = s.SetConfigValue("status.custom", "delivered,accepted,rejected")
+	_ = s.SetConfigValue("status.sequence", "open,in_progress,delivered,accepted,closed")
+
+	issue, _ := s.CreateIssue("Test", "", "task", 2, "", nil, "")
+
+	// Should allow skipping when FSM disabled.
+	if err := s.UpdateStatus(issue.ID, "delivered"); err != nil {
+		t.Errorf("with FSM disabled, open -> delivered should succeed: %v", err)
+	}
+}
+
+func setupFSMStore(t *testing.T, dir string) *Store {
+	t.Helper()
+	s, err := Init(dir, "TST", "tester")
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	if err := s.SetConfigValue("status.custom", "delivered,accepted,rejected"); err != nil {
+		t.Fatalf("set custom: %v", err)
+	}
+	if err := s.SetConfigValue("status.sequence", "open,in_progress,delivered,accepted,closed"); err != nil {
+		t.Fatalf("set sequence: %v", err)
+	}
+	if err := s.SetConfigValue("status.exit_rules", "blocked:open,in_progress,deferred;deferred:open,in_progress,deferred"); err != nil {
+		t.Fatalf("set exit rules: %v", err)
+	}
+	if err := s.SetConfigValue("status.fsm", "true"); err != nil {
+		t.Fatalf("enable fsm: %v", err)
+	}
+	return s
+}
+
+// setupFSMStoreNoExitRules creates an FSM store WITHOUT exit rules to test
+// that the engine is generic and doesn't hardcode blocked/deferred behavior.
+func setupFSMStoreNoExitRules(t *testing.T, dir string) *Store {
+	t.Helper()
+	s, err := Init(dir, "TST", "tester")
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	if err := s.SetConfigValue("status.custom", "delivered,accepted,rejected"); err != nil {
+		t.Fatalf("set custom: %v", err)
+	}
+	if err := s.SetConfigValue("status.sequence", "open,in_progress,delivered,accepted,closed"); err != nil {
+		t.Fatalf("set sequence: %v", err)
+	}
+	if err := s.SetConfigValue("status.fsm", "true"); err != nil {
+		t.Fatalf("enable fsm: %v", err)
+	}
+	return s
+}
+
+func TestAddRelated(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Init(dir, "TST", "tester")
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	a, err := s.CreateIssue("Issue A", "", "task", 2, "", nil, "")
+	if err != nil {
+		t.Fatalf("create A: %v", err)
+	}
+	b, err := s.CreateIssue("Issue B", "", "task", 2, "", nil, "")
+	if err != nil {
+		t.Fatalf("create B: %v", err)
+	}
+
+	// Add related link.
+	if err := s.AddRelated(a.ID, b.ID); err != nil {
+		t.Fatalf("AddRelated: %v", err)
+	}
+
+	// Verify bidirectional.
+	aRead, _ := s.ReadIssue(a.ID)
+	bRead, _ := s.ReadIssue(b.ID)
+
+	if !contains(aRead.Related, b.ID) {
+		t.Errorf("A.Related should contain B: %v", aRead.Related)
+	}
+	if !contains(bRead.Related, a.ID) {
+		t.Errorf("B.Related should contain A: %v", bRead.Related)
+	}
+
+	// Verify wikilinks in body.
+	if !strings.Contains(aRead.Body, "[["+b.ID+"]]") {
+		t.Errorf("A body should contain wikilink to B:\n%s", aRead.Body)
+	}
+	if !strings.Contains(bRead.Body, "[["+a.ID+"]]") {
+		t.Errorf("B body should contain wikilink to A:\n%s", bRead.Body)
+	}
+
+	// Idempotent: adding again should not duplicate.
+	if err := s.AddRelated(a.ID, b.ID); err != nil {
+		t.Fatalf("AddRelated idempotent: %v", err)
+	}
+	aRead2, _ := s.ReadIssue(a.ID)
+	count := 0
+	for _, r := range aRead2.Related {
+		if r == b.ID {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected 1 related entry, got %d: %v", count, aRead2.Related)
+	}
+
+	// Self-reference should fail.
+	if err := s.AddRelated(a.ID, a.ID); err == nil {
+		t.Error("AddRelated to self should fail")
 	}
 }
