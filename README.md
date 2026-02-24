@@ -7,6 +7,10 @@
 
 **nd** (short for `node` as node in a graph) is a Git-native issue tracker that stores issues as Obsidian-compatible markdown files with YAML frontmatter. No database server. No field size limits. Plain files you can read, grep, and version with git.
 
+<p align="center">
+  <img src="graph.png" alt="Graph view of a backlog managed with nd" width="835">
+</p>
+
 ## Why nd Exists
 
 We built [beads](https://github.com/steveyegge/beads) (`bd`) into the backbone of our AI-assisted development workflow. It worked. Persistent memory across compaction, dependency graphs, epic hierarchies. We love beads. But extremely fast development cycles, breaking changes, and the latest adoption of a new storage backend (Dolt SQL) was too much for us. It became the weakest link:
