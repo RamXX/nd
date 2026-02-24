@@ -132,6 +132,7 @@ type Issue struct {
 	CreatedAt   time.Time `yaml:"created_at"`
 	CreatedBy   string    `yaml:"created_by"`
 	UpdatedAt   time.Time `yaml:"updated_at"`
+	DeferUntil  string    `yaml:"defer_until,omitempty"`
 	ClosedAt    string    `yaml:"closed_at,omitempty"`
 	CloseReason string    `yaml:"close_reason,omitempty"`
 	ContentHash string    `yaml:"content_hash"`

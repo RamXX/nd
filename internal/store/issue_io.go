@@ -158,6 +158,9 @@ func marshalFrontmatter(issue *model.Issue) string {
 	writeStringList(&sb, "blocks", issue.Blocks)
 	writeStringList(&sb, "blocked_by", issue.BlockedBy)
 	writeStringList(&sb, "related", issue.Related)
+	if issue.DeferUntil != "" {
+		sb.WriteString(fmt.Sprintf("defer_until: %s\n", issue.DeferUntil))
+	}
 	sb.WriteString(fmt.Sprintf("created_at: %s\n", issue.CreatedAt.Format(time.RFC3339)))
 	sb.WriteString(fmt.Sprintf("created_by: %s\n", issue.CreatedBy))
 	sb.WriteString(fmt.Sprintf("updated_at: %s\n", issue.UpdatedAt.Format(time.RFC3339)))

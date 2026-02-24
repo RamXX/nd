@@ -165,6 +165,44 @@ func (s *Store) RefreshAfterEdit(id string) error {
 	return s.touchUpdatedAt(id)
 }
 
+// DeferIssue sets the issue status to deferred with an optional until date.
+func (s *Store) DeferIssue(id, until string) error {
+	issue, err := s.ReadIssue(id)
+	if err != nil {
+		return err
+	}
+	if issue.Status == model.StatusClosed {
+		return fmt.Errorf("cannot defer closed issue %s", id)
+	}
+
+	if err := s.vault.PropertySet(id, "status", "deferred"); err != nil {
+		return err
+	}
+	if until != "" {
+		if err := s.vault.PropertySet(id, "defer_until", until); err != nil {
+			return err
+		}
+	}
+	return s.touchUpdatedAt(id)
+}
+
+// UnDeferIssue restores a deferred issue to open.
+func (s *Store) UnDeferIssue(id string) error {
+	issue, err := s.ReadIssue(id)
+	if err != nil {
+		return err
+	}
+	if issue.Status != model.StatusDeferred {
+		return fmt.Errorf("issue %s is not deferred (status: %s)", id, issue.Status)
+	}
+
+	if err := s.vault.PropertySet(id, "status", "open"); err != nil {
+		return err
+	}
+	_ = s.vault.PropertyRemove(id, "defer_until")
+	return s.touchUpdatedAt(id)
+}
+
 func (s *Store) touchUpdatedAt(id string) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 	return s.vault.PropertySet(id, "updated_at", now)
