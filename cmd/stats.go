@@ -38,6 +38,7 @@ var statsCmd = &cobra.Command{
 		fmt.Printf("In Progress: %d\n", st.InProgress)
 		fmt.Printf("Blocked:     %d\n", st.Blocked)
 		fmt.Printf("Deferred:    %d\n", st.Deferred)
+		fmt.Printf("Delivered:   %d\n", st.Delivered)
 		fmt.Printf("Closed:      %d\n", st.Closed)
 
 		if len(st.ByType) > 0 {

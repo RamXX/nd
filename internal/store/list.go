@@ -67,12 +67,21 @@ func (s *Store) ListIssues(opts FilterOptions) ([]*model.Issue, error) {
 
 func matchesFilter(issue *model.Issue, opts FilterOptions) bool {
 	if opts.Status != "" {
-		st, err := model.ParseStatus(opts.Status)
-		if err != nil {
-			return false
-		}
-		if issue.Status != st {
-			return false
+		switch opts.Status {
+		case "all":
+			// No status filter.
+		case "!closed":
+			if issue.Status == model.StatusClosed {
+				return false
+			}
+		default:
+			st, err := model.ParseStatus(opts.Status)
+			if err != nil {
+				return false
+			}
+			if issue.Status != st {
+				return false
+			}
 		}
 	}
 	if opts.Type != "" {

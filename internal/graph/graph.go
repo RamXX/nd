@@ -32,7 +32,7 @@ func Build(issues []*model.Issue) *Graph {
 func (g *Graph) Ready() []*model.Issue {
 	var ready []*model.Issue
 	for _, issue := range g.nodes {
-		if issue.Status == model.StatusClosed || issue.Status == model.StatusDeferred {
+		if issue.Status == model.StatusClosed || issue.Status == model.StatusDeferred || issue.Status == model.StatusDelivered {
 			continue
 		}
 		if g.hasOpenBlockers(issue) {
@@ -127,6 +127,7 @@ type Stats struct {
 	Open       int
 	InProgress int
 	Blocked    int
+	Delivered  int
 	Closed     int
 	Deferred   int
 	ByType     map[string]int
@@ -147,6 +148,8 @@ func (g *Graph) Stats() Stats {
 			s.InProgress++
 		case model.StatusBlocked:
 			s.Blocked++
+		case model.StatusDelivered:
+			s.Delivered++
 		case model.StatusClosed:
 			s.Closed++
 		case model.StatusDeferred:

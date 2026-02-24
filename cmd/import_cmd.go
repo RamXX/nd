@@ -96,6 +96,8 @@ var importCmd = &cobra.Command{
 					}
 				case "in_progress":
 					_ = s.UpdateField(issue.ID, "status", "in_progress")
+				case "delivered":
+					_ = s.UpdateField(issue.ID, "status", "delivered")
 				case "blocked":
 					_ = s.UpdateField(issue.ID, "status", "blocked")
 				case "deferred":

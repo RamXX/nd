@@ -14,6 +14,7 @@ const (
 	StatusInProgress Status = "in_progress"
 	StatusBlocked    Status = "blocked"
 	StatusDeferred   Status = "deferred"
+	StatusDelivered  Status = "delivered"
 	StatusClosed     Status = "closed"
 )
 
@@ -22,13 +23,14 @@ var validStatuses = map[Status]bool{
 	StatusInProgress: true,
 	StatusBlocked:    true,
 	StatusDeferred:   true,
+	StatusDelivered:  true,
 	StatusClosed:     true,
 }
 
 func ParseStatus(s string) (Status, error) {
 	st := Status(strings.ToLower(strings.TrimSpace(s)))
 	if !validStatuses[st] {
-		return "", fmt.Errorf("invalid status %q: must be one of open, in_progress, blocked, deferred, closed", s)
+		return "", fmt.Errorf("invalid status %q: must be one of open, in_progress, blocked, deferred, delivered, closed", s)
 	}
 	return st, nil
 }

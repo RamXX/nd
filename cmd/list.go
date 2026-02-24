@@ -19,6 +19,12 @@ var listCmd = &cobra.Command{
 		sort, _ := cmd.Flags().GetString("sort")
 		limit, _ := cmd.Flags().GetInt("limit")
 
+		// Default: show non-closed issues (matching bd behavior).
+		// Use --status=all to see everything, --status=closed for closed only.
+		if !cmd.Flags().Changed("status") {
+			status = "!closed"
+		}
+
 		s, err := store.Open(resolveVaultDir())
 		if err != nil {
 			return err
