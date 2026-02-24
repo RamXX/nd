@@ -94,6 +94,48 @@ var updateCmd = &cobra.Command{
 			changed = true
 		}
 
+		if cmd.Flags().Changed("body-file") {
+			bf, _ := cmd.Flags().GetString("body-file")
+			body, err := readBodyFile(bf)
+			if err != nil {
+				return err
+			}
+			if err := s.UpdateField(id, "description", body); err != nil {
+				return err
+			}
+			changed = true
+		}
+
+		if cmd.Flags().Changed("parent") {
+			v, _ := cmd.Flags().GetString("parent")
+			if err := s.SetParent(id, v); err != nil {
+				return err
+			}
+			changed = true
+		}
+
+		if cmd.Flags().Changed("set-labels") {
+			v, _ := cmd.Flags().GetString("set-labels")
+			if v == "" {
+				if err := s.Vault().PropertyRemove(id, "labels"); err != nil {
+					return err
+				}
+			} else {
+				var labels []string
+				for _, l := range strings.Split(v, ",") {
+					l = strings.TrimSpace(l)
+					if l != "" {
+						labels = append(labels, l)
+					}
+				}
+				value := fmt.Sprintf("[%s]", strings.Join(labels, ", "))
+				if err := s.UpdateField(id, "labels", value); err != nil {
+					return err
+				}
+			}
+			changed = true
+		}
+
 		if cmd.Flags().Changed("add-label") || cmd.Flags().Changed("remove-label") {
 			issue, err := s.ReadIssue(id)
 			if err != nil {
@@ -167,6 +209,9 @@ func init() {
 	updateCmd.Flags().String("type", "", "new type")
 	updateCmd.Flags().String("append-notes", "", "append text to Notes section")
 	updateCmd.Flags().StringP("description", "d", "", "new description")
+	updateCmd.Flags().String("parent", "", "set parent issue ID (empty to clear)")
+	updateCmd.Flags().String("body-file", "", "read description from file (- for stdin)")
+	updateCmd.Flags().String("set-labels", "", "replace all labels (comma-separated, empty to clear)")
 	updateCmd.Flags().StringSlice("add-label", nil, "add labels")
 	updateCmd.Flags().StringSlice("remove-label", nil, "remove labels")
 	rootCmd.AddCommand(updateCmd)
