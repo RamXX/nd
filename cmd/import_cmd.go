@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/RamXX/nd/internal/model"
 	"github.com/RamXX/nd/internal/store"
 	"github.com/RamXX/vlt"
 	"github.com/spf13/cobra"
@@ -75,7 +76,17 @@ var importCmd = &cobra.Command{
 				}
 			}
 
-			issue, err := s.CreateIssue(title, desc, issueType, priority, assignee, labels, "")
+			// Preserve original ID if present, otherwise generate a new one.
+			originalID, _ := raw["id"].(string)
+			var (
+				issue *model.Issue
+				err   error
+			)
+			if originalID != "" {
+				issue, err = s.CreateIssueWithID(originalID, title, desc, issueType, priority, assignee, labels, "")
+			} else {
+				issue, err = s.CreateIssue(title, desc, issueType, priority, assignee, labels, "")
+			}
 			if err != nil {
 				if !quiet {
 					errorf("skip %q: %v", title, err)
@@ -94,10 +105,8 @@ var importCmd = &cobra.Command{
 					if closedAt != "" {
 						_ = s.UpdateField(issue.ID, "closed_at", closedAt)
 					}
-				case "in_progress":
+				case "in_progress", "delivered":
 					_ = s.UpdateField(issue.ID, "status", "in_progress")
-				case "delivered":
-					_ = s.UpdateField(issue.ID, "status", "delivered")
 				case "blocked":
 					_ = s.UpdateField(issue.ID, "status", "blocked")
 				case "deferred":

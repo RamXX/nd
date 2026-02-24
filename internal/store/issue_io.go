@@ -14,17 +14,25 @@ import (
 
 // CreateIssue generates an ID, serializes the issue to markdown, and writes it to the vault.
 func (s *Store) CreateIssue(title, description, issueType string, priority int, assignee string, labels []string, parent string) (*model.Issue, error) {
+	id, err := idgen.GenerateID(s.config.Prefix, title, s.IssueExists)
+	if err != nil {
+		return nil, fmt.Errorf("generate ID: %w", err)
+	}
+	return s.createIssue(id, title, description, issueType, priority, assignee, labels, parent)
+}
+
+// CreateIssueWithID creates an issue using a pre-determined ID (e.g. from import).
+func (s *Store) CreateIssueWithID(id, title, description, issueType string, priority int, assignee string, labels []string, parent string) (*model.Issue, error) {
+	return s.createIssue(id, title, description, issueType, priority, assignee, labels, parent)
+}
+
+func (s *Store) createIssue(id, title, description, issueType string, priority int, assignee string, labels []string, parent string) (*model.Issue, error) {
 	itype, err := model.ParseIssueType(issueType)
 	if err != nil {
 		return nil, err
 	}
 
 	now := time.Now().UTC()
-	id, err := idgen.GenerateID(s.config.Prefix, title, s.IssueExists)
-	if err != nil {
-		return nil, fmt.Errorf("generate ID: %w", err)
-	}
-
 	body := buildBody(description)
 	issue := &model.Issue{
 		ID:          id,

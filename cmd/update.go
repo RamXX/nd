@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/RamXX/nd/internal/model"
 	"github.com/RamXX/nd/internal/store"
@@ -93,6 +94,60 @@ var updateCmd = &cobra.Command{
 			changed = true
 		}
 
+		if cmd.Flags().Changed("add-label") || cmd.Flags().Changed("remove-label") {
+			issue, err := s.ReadIssue(id)
+			if err != nil {
+				return err
+			}
+			labels := issue.Labels
+
+			if cmd.Flags().Changed("add-label") {
+				toAdd, _ := cmd.Flags().GetStringSlice("add-label")
+				for _, add := range toAdd {
+					found := false
+					for _, l := range labels {
+						if strings.EqualFold(l, add) {
+							found = true
+							break
+						}
+					}
+					if !found {
+						labels = append(labels, add)
+					}
+				}
+			}
+
+			if cmd.Flags().Changed("remove-label") {
+				toRemove, _ := cmd.Flags().GetStringSlice("remove-label")
+				var filtered []string
+				for _, l := range labels {
+					keep := true
+					for _, rm := range toRemove {
+						if strings.EqualFold(l, rm) {
+							keep = false
+							break
+						}
+					}
+					if keep {
+						filtered = append(filtered, l)
+					}
+				}
+				labels = filtered
+			}
+
+			if len(labels) == 0 {
+				if err := s.Vault().PropertyRemove(id, "labels"); err != nil {
+					return err
+				}
+			} else {
+				value := fmt.Sprintf("[%s]", strings.Join(labels, ", "))
+				if err := s.UpdateField(id, "labels", value); err != nil {
+					return err
+				}
+			}
+			changed = true
+		}
+
 		if !changed {
 			return fmt.Errorf("no fields specified to update")
 		}
@@ -112,5 +167,7 @@ func init() {
 	updateCmd.Flags().String("type", "", "new type")
 	updateCmd.Flags().String("append-notes", "", "append text to Notes section")
 	updateCmd.Flags().StringP("description", "d", "", "new description")
+	updateCmd.Flags().StringSlice("add-label", nil, "add labels")
+	updateCmd.Flags().StringSlice("remove-label", nil, "remove labels")
 	rootCmd.AddCommand(updateCmd)
 }

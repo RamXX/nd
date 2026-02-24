@@ -16,13 +16,25 @@ var listCmd = &cobra.Command{
 		issueType, _ := cmd.Flags().GetString("type")
 		assignee, _ := cmd.Flags().GetString("assignee")
 		label, _ := cmd.Flags().GetString("label")
+		priority, _ := cmd.Flags().GetString("priority")
 		sort, _ := cmd.Flags().GetString("sort")
 		limit, _ := cmd.Flags().GetInt("limit")
+		reverse, _ := cmd.Flags().GetBool("reverse")
+		showAll, _ := cmd.Flags().GetBool("all")
 
 		// Default: show non-closed issues (matching bd behavior).
 		// Use --status=all to see everything, --status=closed for closed only.
 		if !cmd.Flags().Changed("status") {
-			status = "!closed"
+			if showAll {
+				status = "all"
+			} else {
+				status = "!closed"
+			}
+		}
+
+		// --all without explicit --limit removes the default cap.
+		if showAll && !cmd.Flags().Changed("limit") {
+			limit = 0
 		}
 
 		s, err := store.Open(resolveVaultDir())
@@ -35,7 +47,9 @@ var listCmd = &cobra.Command{
 			Type:     issueType,
 			Assignee: assignee,
 			Label:    label,
+			Priority: priority,
 			Sort:     sort,
+			Reverse:  reverse,
 			Limit:    limit,
 		})
 		if err != nil {
@@ -51,11 +65,14 @@ var listCmd = &cobra.Command{
 }
 
 func init() {
-	listCmd.Flags().String("status", "", "filter by status")
+	listCmd.Flags().StringP("status", "s", "", "filter by status")
 	listCmd.Flags().String("type", "", "filter by type")
-	listCmd.Flags().String("assignee", "", "filter by assignee")
-	listCmd.Flags().String("label", "", "filter by label")
+	listCmd.Flags().StringP("assignee", "a", "", "filter by assignee")
+	listCmd.Flags().StringP("label", "l", "", "filter by label")
+	listCmd.Flags().StringP("priority", "p", "", "filter by priority (0-4 or P0-P4)")
 	listCmd.Flags().String("sort", "priority", "sort by: priority, created, updated, id")
-	listCmd.Flags().IntP("limit", "n", 0, "max results")
+	listCmd.Flags().BoolP("reverse", "r", false, "reverse sort order")
+	listCmd.Flags().Bool("all", false, "show all issues including closed")
+	listCmd.Flags().IntP("limit", "n", 50, "max results (0 for unlimited)")
 	rootCmd.AddCommand(listCmd)
 }

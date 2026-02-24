@@ -9,7 +9,7 @@
 
 ## Why nd Exists
 
-We built [beads](https://github.com/steveyegge/beads) (`bd`) into the backbone of our AI-assisted development workflow. It worked.Persistent memory across compaction, dependency graphs, epic hierarchies. We love beads. But extremely fast development cycles, breaking changes, and the latest adoption of a new storage backend (Dolt SQL) was too much for us. It became the weakest link:
+We built [beads](https://github.com/steveyegge/beads) (`bd`) into the backbone of our AI-assisted development workflow. It worked. Persistent memory across compaction, dependency graphs, epic hierarchies. We love beads. But extremely fast development cycles, breaking changes, and the latest adoption of a new storage backend (Dolt SQL) was too much for us. It became the weakest link:
 
 - **65KB TEXT field limit.** We routinely store 80-160KB in issue descriptions, design notes, and acceptance criteria. Dolt silently truncates at 65KB. Data loss you don't notice until you need it. We believe in agents that are single-use, so beads carry all context. This limitation was too much.
 - **Running server required.** `dolt sql-server` must be running or bd falls back to embedded mode with different behavior. Configuration confusion is constant.
@@ -36,7 +36,7 @@ We built [beads](https://github.com/steveyegge/beads) (`bd`) into the backbone o
 | Locking | `vlt.LockVault(dir, exclusive)` | Concurrent access safety |
 | Delete | `v.Delete()` | Soft delete to .trash/ |
 
-nd adds: issue model with validation, collision-resistant ID generation, dependency graph computation (ready/blocked/cycles), content hashing, epic tree traversal, and output formatting.
+nd adds: issue model with validation, collision-resistant ID generation, dependency graph computation (ready/blocked/cycles), content hashing, epic tree traversal, colored CLI output, and markdown rendering.
 
 ## Installation
 
@@ -64,17 +64,48 @@ nd ready                    # Show actionable issues (no blockers)
 nd list --status=open       # All open issues
 
 # Work on something
-nd update PROJ-a3f --status=in_progress
-nd comments add PROJ-a3f "Root cause found: missing input sanitization"
+nd update PROJ-a3f8 --status=in_progress
+nd comments add PROJ-a3f8 "Root cause found: missing input sanitization"
 
 # Manage dependencies
-nd dep add PROJ-b7c PROJ-a3f    # PROJ-b7c depends on PROJ-a3f
-nd blocked                       # See what's stuck
+nd dep add PROJ-b7c2 PROJ-a3f8    # PROJ-b7c2 depends on PROJ-a3f8
+nd blocked                         # See what's stuck
 
 # Complete work
-nd close PROJ-a3f --reason="Fixed with input validation"
-nd ready                         # PROJ-b7c is now unblocked
+nd close PROJ-a3f8 --reason="Fixed with input validation"
+nd ready                           # PROJ-b7c2 is now unblocked
 ```
+
+## CLI Output
+
+nd uses colored output with the Ayu theme for terminal display. Status icons provide at-a-glance scannability:
+
+```
+○  open         Available to work
+◐  in_progress  Active work (yellow)
+●  blocked      Needs attention (red)
+✓  closed       Completed (muted)
+❄  deferred     Scheduled for later (muted)
+```
+
+List output uses a compact format with colored priority and type indicators:
+
+```
+○ PROJ-a3f8 [● P1] [feature] @alice - Implement user auth
+● PROJ-b7c2 [● P0] [bug] @bob - Fix login crash
+```
+
+Color is automatically disabled for piped output (non-TTY). Respects `NO_COLOR`, `CLICOLOR=0`, and `CLICOLOR_FORCE` environment variables.
+
+## ID Format
+
+Issue IDs use a `PREFIX-HASH` format where the hash is 4 base36 characters (0-9, a-z) derived from SHA-256. This matches the beads (`bd`) ID format for interoperability.
+
+Examples: `PROJ-a3f8`, `TM-uzg6`, `API-00k2`
+
+Children use dot notation: `PROJ-a3f8.1`, `PROJ-a3f8.2`.
+
+When importing from beads JSONL, original IDs are preserved verbatim.
 
 ## Storage Format
 
@@ -82,15 +113,15 @@ Issues live as markdown files in `.vault/issues/`:
 
 ```yaml
 ---
-id: PROJ-a3f
+id: PROJ-a3f8
 title: "Implement user authentication"
 status: open
 priority: 1
 type: feature
 assignee: alice
 labels: [security, milestone]
-blocks: [PROJ-d9e]
-blocked_by: [PROJ-b3c]
+blocks: [PROJ-d9e1]
+blocked_by: [PROJ-b3c0]
 created_at: 2026-02-23T20:15:00Z
 created_by: alice
 updated_at: 2026-02-24T10:30:00Z
@@ -125,9 +156,9 @@ Every issue is a file you can read with `cat`, search with `grep`, diff with `gi
 .vault/
   .nd.yaml            # Config: version, prefix, created_by
   issues/             # One .md file per issue
-    PROJ-a3f.md
-    PROJ-b7c.md
-    PROJ-d9e.md
+    PROJ-a3f8.md
+    PROJ-b7c2.md
+    PROJ-d9e1.md
   .trash/             # Soft-deleted issues
   .vlt.lock           # Advisory file lock
 ```
@@ -140,7 +171,7 @@ Every issue is a file you can read with `cat`, search with `grep`, diff with `gi
 nd init --prefix=PROJ [--vault=PATH] [--author=NAME]
 ```
 
-Creates the vault directory structure and `.nd.yaml` config. Prefix is required -- it becomes part of every issue ID (e.g., `PROJ-a3f`).
+Creates the vault directory structure and `.nd.yaml` config. Prefix is required -- it becomes part of every issue ID (e.g., `PROJ-a3f8`).
 
 ### Issue Creation
 
@@ -154,19 +185,24 @@ nd create "Title" [flags]
   --parent           Parent issue ID (for epic children)
 ```
 
-IDs are generated as `PREFIX-HASH` (3 hex chars from SHA-256). Children use dot notation: `PROJ-a3f.1`, `PROJ-a3f.2`.
+IDs are generated as `PREFIX-HASH` (4 base36 chars from SHA-256). Children use dot notation: `PROJ-a3f8.1`, `PROJ-a3f8.2`.
 
 ### Listing and Filtering
 
 ```bash
 nd list [flags]
-  --status       Filter: open, in_progress, blocked, deferred, closed
-  --type         Filter by issue type
-  --assignee     Filter by assignee
-  --label        Filter by label
-  --sort         Sort by: priority (default), created, updated, id
-  -n, --limit    Max results
+  -s, --status       Filter: open, in_progress, blocked, deferred, closed, all
+  --type             Filter by issue type
+  -a, --assignee     Filter by assignee
+  -l, --label        Filter by label
+  -p, --priority     Filter by priority (0-4 or P0-P4)
+  --sort             Sort by: priority (default), created, updated, id
+  -r, --reverse      Reverse sort order
+  -n, --limit        Max results (default: 50, 0 for unlimited)
+  --all              Show all issues including closed
 ```
+
+Default view shows non-closed issues sorted by priority.
 
 ### Viewing Issues
 
@@ -174,7 +210,7 @@ nd list [flags]
 nd show <id> [--short] [--json]
 ```
 
-`--short` gives a one-line summary. `--json` outputs the full issue as JSON.
+`--short` gives a one-line summary. `--json` outputs the full issue as JSON. Default view renders the issue body as formatted markdown in the terminal.
 
 ### Updating Issues
 
@@ -273,7 +309,7 @@ Outputs a structured summary for AI context injection: total counts, ready work,
 nd import --from-beads <path-to-jsonl>
 ```
 
-Parses a beads JSONL export and creates vault issue files. Preserves timestamps, status, labels, notes, and design content.
+Parses a beads JSONL export and creates vault issue files. Preserves original IDs, timestamps, status, labels, notes, and design content.
 
 ### Vault Health
 
@@ -335,58 +371,6 @@ Closed issues can only transition back to `open` via `nd reopen`.
 | `chore` | Maintenance, tooling, housekeeping |
 | `decision` | Architectural decision records |
 
-## Comparison with beads (bd)
-
-### What nd has that bd has
-
-| Capability | bd | nd |
-|---|---|---|
-| Create/show/list/update/close/reopen | Yes | Yes |
-| Dependencies (blocks/blocked_by) | Yes | Yes |
-| Ready/blocked work discovery | Yes | Yes |
-| Epic hierarchies | Yes | Yes |
-| Labels | Yes | Yes |
-| Comments | Yes | Yes |
-| Search | Yes | Yes |
-| Stats | Yes | Yes |
-| Import from JSONL | Yes | Yes |
-| Doctor/health check | Yes | Yes |
-| Prime (AI context) | Yes | Yes |
-| JSON output | Yes | Yes |
-| Prefix rename | Yes | -- |
-
-### What nd does differently
-
-| Aspect | bd | nd |
-|---|---|---|
-| Storage | Dolt SQL database | Markdown files (YAML frontmatter) |
-| Server | Requires `dolt sql-server` | No server. Files on disk. |
-| Field size | 65KB TEXT limit | Unlimited (it's a file) |
-| Inspectability | `bd show` or SQL queries | `cat`, `grep`, `git diff`, any editor |
-| Sync | `bd dolt push/pull` | `git push/pull` (files are in your repo) |
-| Dependencies | Go binary, Dolt | Go binary only |
-| Vault compatibility | None | Obsidian-compatible (open in Obsidian) |
-| Config | Multiple config sources | Single `.nd.yaml` |
-| Migrations | SQL schema migrations | None needed (markdown is the schema) |
-| Content integrity | Trust the database | SHA-256 content hashing |
-
-### What bd has that nd does not (yet)
-
-| Feature | Status |
-|---|---|
-| `bd q` (quick capture) | Not yet. Use `nd create` with `--quiet`. |
-| `bd edit` (open in $EDITOR) | Not yet. Edit the .md file directly. |
-| `bd graph` (ASCII visualization) | Not yet. Use `nd epic tree` for hierarchies. |
-| `bd stale` (stale issue detection) | Not yet. Use `nd list --sort=updated`. |
-| Molecules/chemistry system | Not planned. Use templates externally. |
-| `bd sync` (Dolt sync) | Replaced by `git push/pull`. |
-| `bd admin compact` (summarization) | Not yet. |
-| `bd merge` (duplicate merging) | Not yet. |
-| `bd rename-prefix` | Not yet. |
-| External references | Not yet. |
-| Date range filters | Not yet. |
-| Hooks (SessionStart/PreCompact) | Via nd-skill plugin. |
-
 ## Architecture
 
 ```
@@ -396,14 +380,15 @@ nd (Go CLI, cobra)
   |
   internal/
     model/           -- Issue struct, Status/Priority/Type enums, validation
-    idgen/           -- SHA-256 collision-resistant ID generation
+    idgen/           -- SHA-256 + base36 collision-resistant ID generation
     store/           -- Wraps vlt.Vault for issue CRUD, deps, filtering
     graph/           -- In-memory dependency graph: ready, blocked, cycles, epics
     enforce/         -- Content hashing, validation rules
     format/          -- Table, detail, JSON, prime context output
+    ui/              -- Terminal styling (Ayu theme), markdown rendering, TTY detection
 ```
 
-**Dependencies**: `cobra`, `vlt`. That's it.
+**Dependencies**: `cobra`, `vlt`, `lipgloss`, `glamour`.
 
 ## Testing
 
@@ -413,7 +398,7 @@ make vet      # Go vet
 make build    # Build binary
 ```
 
-Unit tests cover model validation, ID generation, content hashing, and graph traversal. Integration tests create real temp vaults and run full workflows (init -> create -> dep -> ready -> close -> stats) with no mocks.
+Unit tests cover model validation, ID generation (base36 encoding), content hashing, and graph traversal. Integration tests create real temp vaults and run full workflows (init -> create -> dep -> ready -> close -> stats) with no mocks.
 
 ## License
 

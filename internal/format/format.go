@@ -7,74 +7,113 @@ import (
 	"strings"
 
 	"github.com/RamXX/nd/internal/model"
+	"github.com/RamXX/nd/internal/ui"
 )
 
-// Table renders a list of issues as a text table.
+// Table renders a compact issue list with status icons, colors, and bd-style formatting.
+// Format: STATUS_ICON ID [PRIORITY] [TYPE] @ASSIGNEE [LABELS] - TITLE
 func Table(w io.Writer, issues []*model.Issue) {
 	if len(issues) == 0 {
 		fmt.Fprintln(w, "No issues found.")
 		return
 	}
 
-	// Column widths.
-	idW, titleW, statusW, prioW, typeW, assigneeW := 12, 40, 12, 4, 10, 12
-
-	// Header.
-	fmt.Fprintf(w, "%-*s %-*s %-*s %-*s %-*s %-*s\n",
-		idW, "ID", titleW, "TITLE", statusW, "STATUS", prioW, "PRI", typeW, "TYPE", assigneeW, "ASSIGNEE")
-	fmt.Fprintln(w, strings.Repeat("-", idW+titleW+statusW+prioW+typeW+assigneeW+5))
-
 	for _, issue := range issues {
 		title := issue.Title
-		if len(title) > titleW {
-			title = title[:titleW-3] + "..."
+		if len(title) > 60 {
+			title = title[:57] + "..."
 		}
-		fmt.Fprintf(w, "%-*s %-*s %-*s %-*s %-*s %-*s\n",
-			idW, issue.ID,
-			titleW, title,
-			statusW, issue.Status,
-			prioW, issue.Priority.Short(),
-			typeW, issue.Type,
-			assigneeW, issue.Assignee)
+
+		status := string(issue.Status)
+		isClosed := issue.Status == model.StatusClosed
+
+		if isClosed {
+			// Entire line muted for closed issues.
+			line := fmt.Sprintf("%s %s [P%d] [%s] - %s",
+				ui.StatusIconClosed, issue.ID, issue.Priority, issue.Type, title)
+			fmt.Fprintln(w, ui.RenderClosedLine(line))
+			continue
+		}
+
+		// Build colored line.
+		var parts []string
+		parts = append(parts, ui.RenderStatusIcon(status))
+		parts = append(parts, ui.RenderID(issue.ID))
+		parts = append(parts, fmt.Sprintf("[%s]", ui.RenderPriority(int(issue.Priority))))
+		parts = append(parts, fmt.Sprintf("[%s]", ui.RenderType(string(issue.Type))))
+		if issue.Assignee != "" {
+			parts = append(parts, fmt.Sprintf("@%s", issue.Assignee))
+		}
+		if len(issue.Labels) > 0 {
+			parts = append(parts, fmt.Sprintf("[%s]", strings.Join(issue.Labels, ", ")))
+		}
+		parts = append(parts, fmt.Sprintf("- %s", title))
+
+		fmt.Fprintln(w, strings.Join(parts, " "))
 	}
 	fmt.Fprintf(w, "\n%d issue(s)\n", len(issues))
 }
 
-// Detail renders a single issue in full detail.
+// Detail renders a single issue with colored output and markdown body.
 func Detail(w io.Writer, issue *model.Issue) {
-	fmt.Fprintf(w, "%s: %s\n", issue.ID, issue.Title)
-	fmt.Fprintf(w, "Status:   %s\n", issue.Status)
-	fmt.Fprintf(w, "Priority: %s\n", issue.Priority)
-	fmt.Fprintf(w, "Type:     %s\n", issue.Type)
+	status := string(issue.Status)
+
+	// Header: STATUS_ICON ID . TITLE [PRIORITY . STATUS]
+	fmt.Fprintf(w, "%s %s %s %s [%s %s %s]\n",
+		ui.RenderStatusIcon(status),
+		ui.RenderID(issue.ID),
+		ui.RenderMuted("."),
+		ui.RenderBold(issue.Title),
+		ui.RenderPriority(int(issue.Priority)),
+		ui.RenderMuted("."),
+		ui.RenderStatus(status),
+	)
+
+	// Metadata line 1: Owner . Type
+	var meta1 []string
 	if issue.Assignee != "" {
-		fmt.Fprintf(w, "Assignee: %s\n", issue.Assignee)
+		meta1 = append(meta1, fmt.Sprintf("%s %s", ui.RenderAccent("Owner:"), issue.Assignee))
+	}
+	meta1 = append(meta1, fmt.Sprintf("%s %s", ui.RenderAccent("Type:"), ui.RenderType(string(issue.Type))))
+	fmt.Fprintln(w, strings.Join(meta1, fmt.Sprintf(" %s ", ui.RenderMuted("."))))
+
+	// Metadata line 2: Created . Updated
+	fmt.Fprintf(w, "%s %s %s %s %s\n",
+		ui.RenderAccent("Created:"),
+		issue.CreatedAt.Format("2006-01-02 15:04"),
+		ui.RenderMuted("."),
+		ui.RenderAccent("Updated:"),
+		issue.UpdatedAt.Format("2006-01-02 15:04"),
+	)
+
+	if issue.CreatedBy != "" {
+		fmt.Fprintf(w, "%s %s\n", ui.RenderAccent("Author:"), issue.CreatedBy)
 	}
 	if len(issue.Labels) > 0 {
-		fmt.Fprintf(w, "Labels:   %s\n", strings.Join(issue.Labels, ", "))
+		fmt.Fprintf(w, "%s %s\n", ui.RenderAccent("Labels:"), strings.Join(issue.Labels, ", "))
 	}
 	if issue.Parent != "" {
-		fmt.Fprintf(w, "Parent:   %s\n", issue.Parent)
+		fmt.Fprintf(w, "%s %s\n", ui.RenderAccent("Parent:"), issue.Parent)
 	}
 	if len(issue.Blocks) > 0 {
-		fmt.Fprintf(w, "Blocks:   %s\n", strings.Join(issue.Blocks, ", "))
+		fmt.Fprintf(w, "%s %s\n", ui.RenderAccent("Blocks:"), strings.Join(issue.Blocks, ", "))
 	}
 	if len(issue.BlockedBy) > 0 {
-		fmt.Fprintf(w, "Blocked:  %s\n", strings.Join(issue.BlockedBy, ", "))
+		fmt.Fprintf(w, "%s %s\n", ui.RenderAccent("Blocked by:"), strings.Join(issue.BlockedBy, ", "))
 	}
 	if len(issue.Related) > 0 {
-		fmt.Fprintf(w, "Related:  %s\n", strings.Join(issue.Related, ", "))
+		fmt.Fprintf(w, "%s %s\n", ui.RenderAccent("Related:"), strings.Join(issue.Related, ", "))
 	}
-	fmt.Fprintf(w, "Created:  %s by %s\n", issue.CreatedAt.Format("2006-01-02 15:04"), issue.CreatedBy)
-	fmt.Fprintf(w, "Updated:  %s\n", issue.UpdatedAt.Format("2006-01-02 15:04"))
 	if issue.ClosedAt != "" {
-		fmt.Fprintf(w, "Closed:   %s\n", issue.ClosedAt)
+		fmt.Fprintf(w, "%s %s\n", ui.RenderAccent("Closed:"), issue.ClosedAt)
 	}
 	if issue.CloseReason != "" {
-		fmt.Fprintf(w, "Reason:   %s\n", issue.CloseReason)
+		fmt.Fprintf(w, "%s %s\n", ui.RenderAccent("Reason:"), issue.CloseReason)
 	}
-	fmt.Fprintf(w, "Hash:     %s\n", issue.ContentHash)
+
 	if issue.Body != "" {
-		fmt.Fprintf(w, "\n%s", issue.Body)
+		fmt.Fprintln(w)
+		fmt.Fprint(w, ui.RenderMarkdown(issue.Body))
 	}
 }
 
@@ -94,5 +133,11 @@ func JSONSingle(w io.Writer, issue *model.Issue) error {
 
 // Short renders a one-line summary of an issue.
 func Short(w io.Writer, issue *model.Issue) {
-	fmt.Fprintf(w, "%s [%s] %s (%s)\n", issue.ID, issue.Status, issue.Title, issue.Priority.Short())
+	fmt.Fprintf(w, "%s %s [%s] %s (%s)\n",
+		ui.RenderStatusIcon(string(issue.Status)),
+		issue.ID,
+		ui.RenderStatus(string(issue.Status)),
+		issue.Title,
+		ui.RenderPriority(int(issue.Priority)),
+	)
 }

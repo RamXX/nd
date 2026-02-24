@@ -14,7 +14,9 @@ type FilterOptions struct {
 	Type     string
 	Assignee string
 	Label    string
+	Priority string // filter by priority (e.g. "1", "P1")
 	Sort     string // "priority", "created", "updated", "id" (default)
+	Reverse  bool
 	Limit    int
 }
 
@@ -57,7 +59,7 @@ func (s *Store) ListIssues(opts FilterOptions) ([]*model.Issue, error) {
 		}
 	}
 
-	sortIssues(issues, opts.Sort)
+	sortIssues(issues, opts.Sort, opts.Reverse)
 
 	if opts.Limit > 0 && len(issues) > opts.Limit {
 		issues = issues[:opts.Limit]
@@ -108,28 +110,33 @@ func matchesFilter(issue *model.Issue, opts FilterOptions) bool {
 			return false
 		}
 	}
+	if opts.Priority != "" {
+		p, err := model.ParsePriority(opts.Priority)
+		if err != nil {
+			return false
+		}
+		if issue.Priority != p {
+			return false
+		}
+	}
 	return true
 }
 
-func sortIssues(issues []*model.Issue, sortBy string) {
+func sortIssues(issues []*model.Issue, sortBy string, reverse bool) {
+	less := func(a, b *model.Issue) bool { return a.ID < b.ID }
 	switch sortBy {
 	case "priority":
-		sortByFunc(issues, func(a, b *model.Issue) bool {
-			return a.Priority < b.Priority
-		})
+		less = func(a, b *model.Issue) bool { return a.Priority < b.Priority }
 	case "created":
-		sortByFunc(issues, func(a, b *model.Issue) bool {
-			return a.CreatedAt.Before(b.CreatedAt)
-		})
+		less = func(a, b *model.Issue) bool { return a.CreatedAt.Before(b.CreatedAt) }
 	case "updated":
-		sortByFunc(issues, func(a, b *model.Issue) bool {
-			return a.UpdatedAt.After(b.UpdatedAt)
-		})
-	default: // "id"
-		sortByFunc(issues, func(a, b *model.Issue) bool {
-			return a.ID < b.ID
-		})
+		less = func(a, b *model.Issue) bool { return a.UpdatedAt.After(b.UpdatedAt) }
 	}
+	if reverse {
+		orig := less
+		less = func(a, b *model.Issue) bool { return orig(b, a) }
+	}
+	sortByFunc(issues, less)
 }
 
 func sortByFunc(issues []*model.Issue, less func(a, b *model.Issue) bool) {
