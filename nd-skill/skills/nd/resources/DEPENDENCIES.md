@@ -77,6 +77,17 @@ nd dep add messages buffer
 # buffer has no deps -- it's Ready Front 1
 ```
 
+## History Logging
+
+All dependency changes are recorded in the `## History` section of both issues:
+
+```
+- 2026-02-24T10:30:00Z dep_added: blocked_by PROJ-b7c
+- 2026-02-24T15:00:00Z dep_removed: was_blocked_by PROJ-b7c
+```
+
+This provides an audit trail of how dependencies evolved over time.
+
 ## Removing Dependencies
 
 ```bash
@@ -128,3 +139,32 @@ nd dep tree PROJ-a3f     # Show dependency tree from issue
 ```
 
 Displays the forward dependency tree (what the issue blocks, recursively) as an ASCII tree in the terminal.
+
+## Execution Paths (follows/led_to)
+
+Execution paths are separate from dependencies. Dependencies are structural ("A needs B"). Execution paths are temporal ("B was worked after A").
+
+```bash
+# Manually link: B follows A
+nd update PROJ-b7c --follows=PROJ-a3f
+
+# View execution chain
+nd path PROJ-a3f
+```
+
+### Auto-Detection
+
+When an issue moves to `in_progress`, nd automatically detects predecessors:
+
+1. **was_blocked_by**: Closed issues from the `was_blocked_by` list become follows links
+2. **Sibling fallback**: The most recently closed sibling under the same parent epic
+
+This means the typical workflow of "close blocker, remove dep, start next" automatically builds the execution chain without manual intervention.
+
+### Close-and-Start
+
+```bash
+nd close PROJ-a3f --start=PROJ-b7c
+```
+
+Closes PROJ-a3f and transitions PROJ-b7c to `in_progress`, triggering auto-follows detection. The execution chain is linked automatically.

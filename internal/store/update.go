@@ -2,6 +2,7 @@ package store
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -25,6 +26,8 @@ func (s *Store) UpdateStatus(id string, newStatus model.Status) error {
 		return err
 	}
 
+	oldStatus := issue.Status
+
 	// Validate transition.
 	if issue.Status == model.StatusClosed && newStatus != model.StatusOpen {
 		return fmt.Errorf("closed issues can only be reopened (set to open)")
@@ -39,7 +42,22 @@ func (s *Store) UpdateStatus(id string, newStatus model.Status) error {
 	if err := s.vault.PropertySet(id, "status", string(newStatus)); err != nil {
 		return err
 	}
-	return s.touchUpdatedAt(id)
+	if err := s.touchUpdatedAt(id); err != nil {
+		return err
+	}
+
+	_ = s.appendHistory(id, fmt.Sprintf("status: %s -> %s", oldStatus, newStatus))
+
+	if newStatus == model.StatusInProgress {
+		preds := s.detectPredecessors(issue)
+		for _, predID := range preds {
+			if err := s.AddFollows(id, predID); err == nil {
+				_ = s.appendHistory(id, fmt.Sprintf("auto-follows: linked to predecessor %s", predID))
+			}
+		}
+	}
+
+	return nil
 }
 
 // CloseIssue closes an issue with an optional reason.
@@ -70,7 +88,11 @@ func (s *Store) CloseIssue(id, reason string) error {
 			return err
 		}
 	}
-	return s.touchUpdatedAt(id)
+	if err := s.touchUpdatedAt(id); err != nil {
+		return err
+	}
+	_ = s.appendHistory(id, fmt.Sprintf("status: %s -> closed", issue.Status))
+	return nil
 }
 
 // ReopenIssue changes a closed issue back to open.
@@ -89,7 +111,11 @@ func (s *Store) ReopenIssue(id string) error {
 	// Clear closed_at and close_reason.
 	_ = s.vault.PropertyRemove(id, "closed_at")
 	_ = s.vault.PropertyRemove(id, "close_reason")
-	return s.touchUpdatedAt(id)
+	if err := s.touchUpdatedAt(id); err != nil {
+		return err
+	}
+	_ = s.appendHistory(id, "status: closed -> open (reopened)")
+	return nil
 }
 
 // AppendNotes appends text to the Notes section.
@@ -195,7 +221,11 @@ func (s *Store) DeferIssue(id, until string) error {
 			return err
 		}
 	}
-	return s.touchUpdatedAt(id)
+	if err := s.touchUpdatedAt(id); err != nil {
+		return err
+	}
+	_ = s.appendHistory(id, fmt.Sprintf("status: %s -> deferred", issue.Status))
+	return nil
 }
 
 // UnDeferIssue restores a deferred issue to open.
@@ -212,7 +242,11 @@ func (s *Store) UnDeferIssue(id string) error {
 		return err
 	}
 	_ = s.vault.PropertyRemove(id, "defer_until")
-	return s.touchUpdatedAt(id)
+	if err := s.touchUpdatedAt(id); err != nil {
+		return err
+	}
+	_ = s.appendHistory(id, "status: deferred -> open")
+	return nil
 }
 
 func (s *Store) touchUpdatedAt(id string) error {
@@ -271,4 +305,140 @@ func indexInSequence(seq []model.Status, st model.Status) int {
 		}
 	}
 	return -1
+}
+
+// appendHistory appends a timestamped entry to the ## History section of an issue.
+// Self-heals pre-existing issues that lack the ## History section.
+func (s *Store) appendHistory(id, entry string) error {
+	line := fmt.Sprintf("- %s %s", time.Now().UTC().Format(time.RFC3339), entry)
+
+	issue, err := s.ReadIssue(id)
+	if err != nil {
+		return err
+	}
+
+	if !strings.Contains(issue.Body, "\n## History\n") {
+		anchor := "\n## Links\n"
+		if idx := strings.Index(issue.Body, anchor); idx >= 0 {
+			newBody := issue.Body[:idx] + "\n## History\n\n" + issue.Body[idx:]
+			if err := s.vault.Write(id, newBody, false); err != nil {
+				return err
+			}
+		}
+	}
+
+	return s.vault.Patch(id, vlt.PatchOptions{
+		Heading:    "## History",
+		Content:    line + "\n",
+		Timestamps: false,
+	})
+}
+
+// AppendHistoryEntry appends a timestamped entry to the ## History section (public API).
+func (s *Store) AppendHistoryEntry(id, entry string) error {
+	return s.appendHistory(id, entry)
+}
+
+// AddFollows creates a bidirectional follows/led_to link between two issues.
+// id follows predecessorID (predecessorID led to id).
+func (s *Store) AddFollows(id, predecessorID string) error {
+	if id == predecessorID {
+		return fmt.Errorf("an issue cannot follow itself")
+	}
+
+	issue, err := s.ReadIssue(id)
+	if err != nil {
+		return fmt.Errorf("issue %s: %w", id, err)
+	}
+	pred, err := s.ReadIssue(predecessorID)
+	if err != nil {
+		return fmt.Errorf("predecessor %s: %w", predecessorID, err)
+	}
+
+	if !contains(issue.Follows, predecessorID) {
+		newList := append(issue.Follows, predecessorID)
+		if err := s.setListProperty(id, "follows", newList); err != nil {
+			return err
+		}
+	}
+
+	if !contains(pred.LedTo, id) {
+		newList := append(pred.LedTo, id)
+		if err := s.setListProperty(predecessorID, "led_to", newList); err != nil {
+			return err
+		}
+	}
+
+	_ = s.UpdateLinksSection(id)
+	_ = s.UpdateLinksSection(predecessorID)
+	return nil
+}
+
+// RemoveFollows removes a bidirectional follows/led_to link between two issues.
+func (s *Store) RemoveFollows(id, predecessorID string) error {
+	issue, err := s.ReadIssue(id)
+	if err != nil {
+		return fmt.Errorf("issue %s: %w", id, err)
+	}
+	pred, err := s.ReadIssue(predecessorID)
+	if err != nil {
+		return fmt.Errorf("predecessor %s: %w", predecessorID, err)
+	}
+
+	newFollows := remove(issue.Follows, predecessorID)
+	if err := s.setListProperty(id, "follows", newFollows); err != nil {
+		return err
+	}
+
+	newLedTo := remove(pred.LedTo, id)
+	if err := s.setListProperty(predecessorID, "led_to", newLedTo); err != nil {
+		return err
+	}
+
+	_ = s.UpdateLinksSection(id)
+	_ = s.UpdateLinksSection(predecessorID)
+	return nil
+}
+
+// detectPredecessors finds likely predecessor issues for auto-follows.
+// Strategy 1: Closed issues from was_blocked_by not already in Follows.
+// Strategy 2: Most recently closed sibling under same parent.
+func (s *Store) detectPredecessors(issue *model.Issue) []string {
+	var preds []string
+
+	// Strategy 1: was_blocked_by entries that are closed.
+	for _, wbID := range issue.WasBlockedBy {
+		if contains(issue.Follows, wbID) {
+			continue
+		}
+		if wb, err := s.ReadIssue(wbID); err == nil && wb.Status == model.StatusClosed {
+			preds = append(preds, wbID)
+		}
+	}
+	if len(preds) > 0 {
+		return preds
+	}
+
+	// Strategy 2: most recently closed sibling under same parent.
+	if issue.Parent == "" {
+		return nil
+	}
+	siblings, err := s.ListIssues(FilterOptions{Parent: issue.Parent, Status: "closed"})
+	if err != nil || len(siblings) == 0 {
+		return nil
+	}
+
+	// Sort by closed_at descending.
+	sort.Slice(siblings, func(i, j int) bool {
+		return siblings[i].ClosedAt > siblings[j].ClosedAt
+	})
+
+	for _, sib := range siblings {
+		if sib.ID == issue.ID || contains(issue.Follows, sib.ID) {
+			continue
+		}
+		return []string{sib.ID}
+	}
+
+	return nil
 }

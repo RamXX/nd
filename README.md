@@ -34,10 +34,12 @@ We built [beads](https://github.com/steveyegge/beads) (`bd`) into the backbone o
 | Custom statuses | `status.custom` comma-separated config | Same, plus opt-in FSM enforcement |
 | Status enforcement | None | Configurable: sequence, exit rules |
 | Dependencies | Flat `depends_on` | Bidirectional blocks/blocked_by with history |
+| Execution paths | None | Follows/led_to chains with auto-detection |
+| History | None | Append-only history log per issue |
 | Epics | Basic parent-child | Tree traversal, status rollup, close-eligible |
 | Content integrity | None | SHA-256 content hashing |
 | Import from beads | N/A | `nd import --from-beads` preserves IDs and timestamps |
-| DAG visualization | None | `nd graph` terminal DAG |
+| DAG visualization | None | `nd graph` terminal DAG, `nd path` execution chains |
 
 Both tools use the same ID format (`PREFIX-HASH`, 4 base36 chars from SHA-256) for interoperability.
 
@@ -59,7 +61,7 @@ Both tools use the same ID format (`PREFIX-HASH`, 4 base36 chars from SHA-256) f
 | Locking | `vlt.LockVault(dir, exclusive)` | Concurrent access safety |
 | Delete | `v.Delete()` | Soft delete to .trash/ |
 
-nd adds: issue model with validation, collision-resistant ID generation, dependency graph computation (ready/blocked/cycles), content hashing, epic tree traversal, colored CLI output, markdown rendering, configurable FSM enforcement, and custom status support.
+nd adds: issue model with validation, collision-resistant ID generation, dependency graph computation (ready/blocked/cycles), execution path tracking (follows/led_to with auto-detection), append-only history logging, content hashing, epic tree traversal, colored CLI output, markdown rendering, configurable FSM enforcement, and custom status support.
 
 ## Installation
 
@@ -217,13 +219,15 @@ Issues live as markdown files in `.vault/issues/`:
 ---
 id: PROJ-a3f8
 title: "Implement user authentication"
-status: open
+status: in_progress
 priority: 1
 type: feature
 assignee: alice
 labels: [security, milestone]
 blocks: [PROJ-d9e1]
 blocked_by: [PROJ-b3c0]
+follows: [PROJ-c4d2]
+led_to: [PROJ-e5f3]
 created_at: 2026-02-23T20:15:00Z
 created_by: alice
 updated_at: 2026-02-24T10:30:00Z
@@ -244,9 +248,15 @@ Using bcrypt with 12 rounds per OWASP recommendation...
 ## Notes
 Spike complete. Chose Authorization Code flow over Implicit.
 
+## History
+- 2026-02-23T20:15:00Z status: open -> in_progress
+- 2026-02-23T20:15:00Z auto-follows: linked to predecessor PROJ-c4d2
+
 ## Links
 - Blocks: [[PROJ-d9e1]]
 - Blocked by: [[PROJ-b3c0]]
+- Follows: [[PROJ-c4d2]]
+- Led to: [[PROJ-e5f3]]
 
 ## Comments
 
@@ -381,6 +391,8 @@ nd update <id> [flags]
   --body-file       Read description from file (- for stdin)
   --append-notes    Append text to Notes section
   --parent          Set parent issue ID (empty to clear)
+  --follows         Add follows link to predecessor issue
+  --unfollow        Remove follows link from predecessor issue
   --set-labels      Replace all labels (comma-separated, empty to clear)
   --add-label       Add label(s)
   --remove-label    Remove label(s)
@@ -399,11 +411,13 @@ Opens the issue file in your editor. After saving, nd refreshes the content hash
 ### Closing and Reopening
 
 ```bash
-nd close <id> [id...] [--reason="explanation"] [--suggest-next]
+nd close <id> [id...] [--reason="explanation"] [--suggest-next] [--start=<next-id>]
 nd reopen <id>
 ```
 
 Close accepts multiple IDs for batch operations. Closing sets `closed_at` and optionally `close_reason`. Reopening clears both and sets status to `open`.
+
+`--start` transitions another issue to `in_progress` after closing, triggering auto-follows detection to link the execution chain.
 
 When FSM is enabled, `nd close` requires the issue to be at the step immediately before `closed` in the sequence. `nd reopen` is always allowed.
 
@@ -430,7 +444,7 @@ nd dep cycles                      # Detect dependency cycles
 nd dep tree <id>                   # Show dependency tree
 ```
 
-Dependencies are bidirectional: `nd dep add A B` adds B to A's `blocked_by` AND A to B's `blocks`. Removing moves the reference to `was_blocked_by` for historical tracking.
+Dependencies are bidirectional: `nd dep add A B` adds B to A's `blocked_by` AND A to B's `blocks`. Removing moves the reference to `was_blocked_by` for historical tracking. All dependency changes are logged in the `## History` section of both issues.
 
 ### Finding Work
 
@@ -495,6 +509,15 @@ nd graph [--status=STATUS] [--all]
 
 Renders the dependency graph as a terminal DAG with status-colored nodes and directed edges.
 
+### Execution Path Visualization
+
+```bash
+nd path            # Show all execution chain roots
+nd path <id>       # Show execution chain from a specific issue
+```
+
+Renders the execution path tree following `follows`/`led_to` edges. Shows the temporal order in which work was completed.
+
 ### AI Context
 
 ```bash
@@ -524,7 +547,7 @@ Validates:
 4. Field validation (required fields present, enums valid, custom statuses recognized)
 5. Links section integrity (## Links present with correct wikilinks)
 
-With `--fix`, automatically repairs hash mismatches, broken dependency references, and missing Links sections.
+With `--fix`, automatically repairs hash mismatches, broken dependency references, missing Links sections, and History section content hash drift.
 
 ### Deleting Issues
 
@@ -532,7 +555,7 @@ With `--fix`, automatically repairs hash mismatches, broken dependency reference
 nd delete <id> [--permanent]
 ```
 
-Soft-deletes to `.trash/` by default. `--permanent` removes the file entirely. Cleans up dependency references on both sides.
+Soft-deletes to `.trash/` by default. `--permanent` removes the file entirely. Cleans up dependency references and follows/led_to links on both sides.
 
 ### Global Flags
 
@@ -606,7 +629,7 @@ nd (Go CLI, cobra)
     model/           -- Issue struct, Status/Priority/Type enums, validation
     idgen/           -- SHA-256 + base36 collision-resistant ID generation
     store/           -- Wraps vlt.Vault for issue CRUD, deps, filtering, FSM
-    graph/           -- In-memory dependency graph: ready, blocked, cycles, epics, DAG
+    graph/           -- In-memory dependency graph: ready, blocked, cycles, epics, DAG, execution paths
     enforce/         -- Content hashing, validation rules
     format/          -- Table, detail, JSON, prime context output
     ui/              -- Terminal styling (Ayu theme), markdown rendering, TTY detection
@@ -622,7 +645,7 @@ make vet      # Go vet
 make build    # Build binary
 ```
 
-Unit tests cover model validation, ID generation, content hashing, graph traversal, config round-tripping, and FSM transition enforcement (forward steps, backward rework, exit rules, sequence skipping). Integration tests create real temp vaults and run full workflows with no mocks: init, create, dep, ready, close, custom status transitions, and FSM enforcement.
+Unit tests cover model validation, ID generation, content hashing, graph traversal (dependency trees and execution paths), config round-tripping, and FSM transition enforcement (forward steps, backward rework, exit rules, sequence skipping). Integration tests create real temp vaults and run full workflows with no mocks: init, create, dep, ready, close, follows/led_to linking, history logging, auto-follows detection, custom status transitions, and FSM enforcement.
 
 ## License
 

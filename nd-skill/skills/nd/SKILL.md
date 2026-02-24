@@ -5,7 +5,7 @@ description: >
   Use for multi-session work, dependency tracking, and persistent context that
   survives conversation compaction. No database server. No size limits. Git-native.
 allowed-tools: "Read,Bash(nd:*)"
-version: "0.3.0"
+version: "0.4.0"
 author: "Ramiro Salas <https://github.com/RamXX>"
 license: "Apache-2.0"
 ---
@@ -65,7 +65,7 @@ Essential commands: `nd ready`, `nd create`, `nd show`, `nd update`, `nd close`,
 
 ## Storage
 
-Issues are markdown files in `.vault/issues/`. Each file has YAML frontmatter (id, status, priority, type, deps) and markdown body (Description, Acceptance Criteria, Design, Notes, Comments). You can `cat`, `grep`, and `git diff` them directly.
+Issues are markdown files in `.vault/issues/`. Each file has YAML frontmatter (id, status, priority, type, deps, follows/led_to) and markdown body (Description, Acceptance Criteria, Design, Notes, History, Links, Comments). You can `cat`, `grep`, and `git diff` them directly.
 
 For the full storage format specification, see [STORAGE.md](resources/STORAGE.md).
 
@@ -76,8 +76,9 @@ For the full storage format specification, see [STORAGE.md](resources/STORAGE.md
 | Find work | `nd ready`, `nd blocked`, `nd stale` | [WORKFLOWS.md](resources/WORKFLOWS.md) |
 | Create issues | `nd create`, `nd q` (quick capture) | [ISSUE_CREATION.md](resources/ISSUE_CREATION.md) |
 | Dependencies | `nd dep add/rm/relate/cycles/tree` | [DEPENDENCIES.md](resources/DEPENDENCIES.md) |
+| Execution paths | `nd path`, `--follows`, `--start` | [DEPENDENCIES.md](resources/DEPENDENCIES.md) |
 | Epics | `nd epic tree/status/close-eligible` | [EPICS.md](resources/EPICS.md) |
-| Visualization | `nd graph` (terminal DAG) | [CLI_REFERENCE.md](resources/CLI_REFERENCE.md) |
+| Visualization | `nd graph` (dep DAG), `nd path` (exec chains) | [CLI_REFERENCE.md](resources/CLI_REFERENCE.md) |
 | Custom statuses | `nd config set status.custom` | [CLI_REFERENCE.md](resources/CLI_REFERENCE.md) |
 | FSM enforcement | `nd config set status.fsm true` | [CLI_REFERENCE.md](resources/CLI_REFERENCE.md) |
 | Defer work | `nd defer/undefer` | [CLI_REFERENCE.md](resources/CLI_REFERENCE.md) |

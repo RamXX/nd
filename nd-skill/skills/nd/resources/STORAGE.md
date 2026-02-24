@@ -36,7 +36,7 @@ Each issue is a markdown file with YAML frontmatter:
 ---
 id: PROJ-a3f
 title: "Implement user authentication"
-status: open
+status: in_progress
 priority: 1
 type: feature
 assignee: alice
@@ -45,6 +45,8 @@ parent: ""
 blocks: [PROJ-d9e]
 blocked_by: [PROJ-b3c]
 related: [PROJ-f2a]
+follows: [PROJ-c4d]
+led_to: [PROJ-e5f]
 created_at: 2026-02-23T20:15:00Z
 created_by: alice
 updated_at: 2026-02-24T10:30:00Z
@@ -65,6 +67,17 @@ Using bcrypt with 12 rounds per OWASP recommendation.
 
 ## Notes
 Spike complete. Chose Authorization Code flow.
+
+## History
+- 2026-02-23T20:15:00Z status: open -> in_progress
+- 2026-02-23T20:15:00Z auto-follows: linked to predecessor PROJ-c4d
+
+## Links
+- Blocks: [[PROJ-d9e]]
+- Blocked by: [[PROJ-b3c]]
+- Related: [[PROJ-f2a]]
+- Follows: [[PROJ-c4d]]
+- Led to: [[PROJ-e5f]]
 
 ## Comments
 
@@ -87,6 +100,8 @@ Started implementation.
 | `blocks` | string[] | No | IDs this issue blocks |
 | `blocked_by` | string[] | No | IDs blocking this issue |
 | `related` | string[] | No | Related issue IDs |
+| `follows` | string[] | No | Predecessor issue IDs (execution order) |
+| `led_to` | string[] | No | Successor issue IDs (execution order) |
 | `was_blocked_by` | string[] | No | Historical blockers (after removal) |
 | `defer_until` | string | No | Target date for deferred issues (YYYY-MM-DD) |
 | `created_at` | RFC3339 | Yes | Creation timestamp |
@@ -106,6 +121,7 @@ The body (below frontmatter) contains these standard sections:
 | `## Acceptance Criteria` | Definition of done | Manual edit |
 | `## Design` | Design decisions, architecture | Manual edit, import |
 | `## Notes` | Working notes | `nd update --append-notes` |
+| `## History` | Append-only state transition log | Auto-maintained by nd |
 | `## Links` | Wikilinks derived from relationships | Auto-maintained by nd |
 | `## Comments` | Timestamped discussion | `nd comments add` |
 

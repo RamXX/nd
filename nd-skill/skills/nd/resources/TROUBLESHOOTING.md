@@ -6,7 +6,7 @@ Common problems and fixes when using nd.
 
 **Symptom**: `nd doctor` reports `[HASH] ID: content hash mismatch`
 
-**Cause**: The body was modified (e.g., comment added, section edited) but the stored `content_hash` was not recalculated. This happens when comments are added via `nd comments add` (which appends to the body) or when files are edited directly.
+**Cause**: The body was modified (e.g., comment added, section edited, history entry appended) but the stored `content_hash` was not recalculated. This happens when comments are added via `nd comments add`, history entries are appended during state transitions, or when files are edited directly.
 
 **Fix**:
 ```bash
@@ -72,7 +72,7 @@ ls .vault/issues/
 
 **Symptom**: `nd doctor` reports `[LINKS] ID: Links section missing or inconsistent`
 
-**Cause**: The `## Links` section (containing wikilinks like `[[PROJ-b7c]]`) doesn't match the frontmatter relationships (parent, blocks, blocked_by, related).
+**Cause**: The `## Links` section (containing wikilinks like `[[PROJ-b7c]]`) doesn't match the frontmatter relationships (parent, blocks, blocked_by, related, follows, led_to).
 
 **Fix**:
 ```bash

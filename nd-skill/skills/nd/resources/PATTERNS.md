@@ -98,6 +98,29 @@ nd update PROJ-a3f --append-notes="BLOCKED: found circular import between pkg/au
 
 After compaction, `nd show PROJ-a3f` gives the full trail.
 
+## Pattern: Execution Path Chain
+
+Track the journey through work items:
+
+```bash
+# Close current work and immediately start next
+nd close PROJ-a3f --start=PROJ-b7c --reason="Implemented"
+# PROJ-b7c.follows = [PROJ-a3f], PROJ-a3f.led_to = [PROJ-b7c]
+
+# View the execution chain
+nd path PROJ-a3f
+# Output:
+# [x] PROJ-a3f Design auth (P1)
+# `- [>] PROJ-b7c Implement auth (P1)
+#    `- [ ] PROJ-c4d Auth tests (P2)
+
+# History is recorded automatically
+nd show PROJ-b7c
+# ## History
+# - 2026-02-24T10:30:00Z status: open -> in_progress
+# - 2026-02-24T10:30:00Z auto-follows: linked to predecessor PROJ-a3f
+```
+
 ## Pattern: Using nd with Git Workflow
 
 Issues are files -- they live in your git repo:

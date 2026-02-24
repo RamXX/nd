@@ -64,7 +64,7 @@ func (s *Store) createIssue(id, title, description, issueType string, priority i
 	issue.FilePath = path
 
 	// Populate Links section if the issue has relationships at creation time.
-	if issue.Parent != "" || len(issue.Blocks) > 0 || len(issue.BlockedBy) > 0 || len(issue.Related) > 0 {
+	if issue.Parent != "" || len(issue.Blocks) > 0 || len(issue.BlockedBy) > 0 || len(issue.Related) > 0 || len(issue.Follows) > 0 || len(issue.LedTo) > 0 {
 		_ = s.UpdateLinksSection(id)
 	}
 
@@ -95,6 +95,7 @@ func buildBody(description string) string {
 	sb.WriteString("\n## Acceptance Criteria\n\n")
 	sb.WriteString("\n## Design\n\n")
 	sb.WriteString("\n## Notes\n\n")
+	sb.WriteString("\n## History\n\n")
 	sb.WriteString("\n## Links\n\n")
 	sb.WriteString("\n## Comments\n")
 	return sb.String()
@@ -135,6 +136,20 @@ func buildLinksSection(issue *model.Issue) string {
 		}
 		sb.WriteString(fmt.Sprintf("- Related: %s\n", strings.Join(links, ", ")))
 	}
+	if len(issue.Follows) > 0 {
+		links := make([]string, len(issue.Follows))
+		for i, f := range issue.Follows {
+			links[i] = fmt.Sprintf("[[%s]]", f)
+		}
+		sb.WriteString(fmt.Sprintf("- Follows: %s\n", strings.Join(links, ", ")))
+	}
+	if len(issue.LedTo) > 0 {
+		links := make([]string, len(issue.LedTo))
+		for i, l := range issue.LedTo {
+			links[i] = fmt.Sprintf("[[%s]]", l)
+		}
+		sb.WriteString(fmt.Sprintf("- Led to: %s\n", strings.Join(links, ", ")))
+	}
 	return sb.String()
 }
 
@@ -166,6 +181,8 @@ func marshalFrontmatter(issue *model.Issue) string {
 	writeStringList(&sb, "blocked_by", issue.BlockedBy)
 	writeStringList(&sb, "was_blocked_by", issue.WasBlockedBy)
 	writeStringList(&sb, "related", issue.Related)
+	writeStringList(&sb, "follows", issue.Follows)
+	writeStringList(&sb, "led_to", issue.LedTo)
 	if issue.DeferUntil != "" {
 		sb.WriteString(fmt.Sprintf("defer_until: %s\n", issue.DeferUntil))
 	}
@@ -210,6 +227,28 @@ func (s *Store) DeleteIssue(id string, permanent bool) ([]string, error) {
 	for _, blockedID := range issue.Blocks {
 		if err := s.RemoveDependency(blockedID, id); err == nil {
 			modified = append(modified, blockedID)
+		}
+	}
+
+	// Clean up follows references (predecessors that led to this issue).
+	for _, predID := range issue.Follows {
+		if pred, err := s.ReadIssue(predID); err == nil {
+			newLedTo := remove(pred.LedTo, id)
+			if err := s.setListProperty(predID, "led_to", newLedTo); err == nil {
+				_ = s.UpdateLinksSection(predID)
+				modified = append(modified, predID)
+			}
+		}
+	}
+
+	// Clean up led_to references (successors that follow this issue).
+	for _, succID := range issue.LedTo {
+		if succ, err := s.ReadIssue(succID); err == nil {
+			newFollows := remove(succ.Follows, id)
+			if err := s.setListProperty(succID, "follows", newFollows); err == nil {
+				_ = s.UpdateLinksSection(succID)
+				modified = append(modified, succID)
+			}
 		}
 	}
 

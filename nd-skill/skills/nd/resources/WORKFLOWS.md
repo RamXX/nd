@@ -8,6 +8,7 @@ Step-by-step workflows for common nd usage patterns.
 - [Compaction Survival](#compaction-survival)
 - [Session Handoff](#session-handoff)
 - [Unblocking Work](#unblocking-work)
+- [Execution Path Tracking](#execution-path-tracking)
 - [Integration with TodoWrite](#integration-with-todowrite)
 
 ## Session Start {#session-start}
@@ -108,6 +109,45 @@ Unblocking Workflow:
 ```
 
 **Pattern**: nd automatically maintains ready state. Closing a blocker makes blocked work ready. No manual status updates needed.
+
+## Execution Path Tracking {#execution-path-tracking}
+
+Execution paths record the temporal order of work -- which issue was worked after which. This creates connected chains in Obsidian's graph view instead of disconnected islands.
+
+**Automatic tracking (recommended)**:
+
+Most execution path links are auto-detected. The typical workflow:
+
+```
+Execution Path Workflow:
+- [ ] nd dep add B A                              # B depends on A
+- [ ] Work on A, then nd close A
+- [ ] nd dep rm B A                               # Resolve dep (archives to was_blocked_by)
+- [ ] nd update B --status=in_progress            # Auto-follows detects A as predecessor
+- [ ] nd path A                                   # View: A -> B chain
+```
+
+**Close-and-start shortcut**:
+
+```bash
+nd close PROJ-a3f --start=PROJ-b7c               # Close A, start B, auto-link
+```
+
+**Manual linking**:
+
+```bash
+nd update PROJ-b7c --follows=PROJ-a3f            # B follows A
+nd update PROJ-b7c --unfollow=PROJ-a3f           # Remove link
+```
+
+**Viewing execution paths**:
+
+```bash
+nd path                                           # All chain starting points
+nd path PROJ-a3f                                  # Chain from specific issue
+```
+
+**Pattern**: Let auto-detection handle most links. Use `--follows` for manual corrections or cross-epic linking.
 
 ## Integration with TodoWrite
 

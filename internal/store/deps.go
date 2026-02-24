@@ -42,6 +42,9 @@ func (s *Store) AddDependency(issueID, depID string) error {
 	_ = s.UpdateLinksSection(issueID)
 	_ = s.UpdateLinksSection(depID)
 
+	_ = s.appendHistory(issueID, fmt.Sprintf("dep_added: blocked_by %s", depID))
+	_ = s.appendHistory(depID, fmt.Sprintf("dep_added: blocks %s", issueID))
+
 	return nil
 }
 
@@ -80,6 +83,9 @@ func (s *Store) RemoveDependency(issueID, depID string) error {
 	// Update Links sections for both sides.
 	_ = s.UpdateLinksSection(issueID)
 	_ = s.UpdateLinksSection(depID)
+
+	_ = s.appendHistory(issueID, fmt.Sprintf("dep_removed: was_blocked_by %s", depID))
+	_ = s.appendHistory(depID, fmt.Sprintf("dep_removed: no_longer_blocks %s", issueID))
 
 	return nil
 }

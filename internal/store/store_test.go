@@ -786,3 +786,445 @@ func TestAddRelated(t *testing.T) {
 		t.Error("AddRelated to self should fail")
 	}
 }
+
+func TestBuildLinksSectionFollows(t *testing.T) {
+	tests := []struct {
+		name  string
+		issue *model.Issue
+		want  []string
+	}{
+		{
+			name:  "follows only",
+			issue: &model.Issue{ID: "TST-0001", Follows: []string{"TST-pred"}},
+			want:  []string{"- Follows: [[TST-pred]]"},
+		},
+		{
+			name:  "led_to only",
+			issue: &model.Issue{ID: "TST-0001", LedTo: []string{"TST-succ1", "TST-succ2"}},
+			want:  []string{"- Led to: [[TST-succ1]], [[TST-succ2]]"},
+		},
+		{
+			name: "both follows and led_to",
+			issue: &model.Issue{
+				ID:      "TST-0001",
+				Follows: []string{"TST-pred"},
+				LedTo:   []string{"TST-succ"},
+			},
+			want: []string{
+				"- Follows: [[TST-pred]]",
+				"- Led to: [[TST-succ]]",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := buildLinksSection(tt.issue)
+			for _, w := range tt.want {
+				if !strings.Contains(got, w) {
+					t.Errorf("missing %q in:\n%s", w, got)
+				}
+			}
+		})
+	}
+}
+
+func TestNewIssueHasHistorySection(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Init(dir, "TST", "tester")
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	issue, err := s.CreateIssue("Test", "", "task", 2, "", nil, "")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	read, err := s.ReadIssue(issue.ID)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if !strings.Contains(read.Body, "\n## History\n") {
+		t.Errorf("new issue should have ## History section:\n%s", read.Body)
+	}
+}
+
+func TestMarshalFrontmatterFollowsLedTo(t *testing.T) {
+	issue := &model.Issue{
+		ID:        "TST-0001",
+		Title:     "Test",
+		Status:    model.StatusOpen,
+		Priority:  2,
+		Type:      model.TypeTask,
+		CreatedBy: "tester",
+		Related:   []string{"TST-r1"},
+		Follows:   []string{"TST-pred"},
+		LedTo:     []string{"TST-succ"},
+	}
+	fm := marshalFrontmatter(issue)
+
+	// Verify ordering: related before follows, follows before led_to.
+	relIdx := strings.Index(fm, "related:")
+	folIdx := strings.Index(fm, "follows:")
+	ledIdx := strings.Index(fm, "led_to:")
+
+	if relIdx < 0 || folIdx < 0 || ledIdx < 0 {
+		t.Fatalf("missing fields in frontmatter:\n%s", fm)
+	}
+	if relIdx >= folIdx {
+		t.Errorf("related (%d) should come before follows (%d)", relIdx, folIdx)
+	}
+	if folIdx >= ledIdx {
+		t.Errorf("follows (%d) should come before led_to (%d)", folIdx, ledIdx)
+	}
+}
+
+func TestAppendHistory(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Init(dir, "TST", "tester")
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	issue, err := s.CreateIssue("Test", "", "task", 2, "", nil, "")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	if err := s.AppendHistoryEntry(issue.ID, "test entry"); err != nil {
+		t.Fatalf("AppendHistoryEntry: %v", err)
+	}
+
+	read, err := s.ReadIssue(issue.ID)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if !strings.Contains(read.Body, "test entry") {
+		t.Errorf("body should contain history entry:\n%s", read.Body)
+	}
+}
+
+func TestAppendHistorySelfHealing(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Init(dir, "TST", "tester")
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	issue, err := s.CreateIssue("Test", "", "task", 2, "", nil, "")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	// Remove ## History section to simulate pre-existing issue.
+	read, _ := s.ReadIssue(issue.ID)
+	newBody := strings.Replace(read.Body, "\n## History\n\n", "", 1)
+	if err := s.vault.Write(issue.ID, newBody, false); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	// Verify it's gone.
+	read2, _ := s.ReadIssue(issue.ID)
+	if strings.Contains(read2.Body, "\n## History\n") {
+		t.Fatal("## History should be removed for this test")
+	}
+
+	// appendHistory should self-heal.
+	if err := s.AppendHistoryEntry(issue.ID, "healed entry"); err != nil {
+		t.Fatalf("AppendHistoryEntry: %v", err)
+	}
+
+	read3, _ := s.ReadIssue(issue.ID)
+	if !strings.Contains(read3.Body, "\n## History\n") {
+		t.Errorf("## History should be self-healed:\n%s", read3.Body)
+	}
+	if !strings.Contains(read3.Body, "healed entry") {
+		t.Errorf("body should contain healed entry:\n%s", read3.Body)
+	}
+}
+
+func TestAddFollowsBidirectional(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Init(dir, "TST", "tester")
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	a, _ := s.CreateIssue("Issue A", "", "task", 2, "", nil, "")
+	b, _ := s.CreateIssue("Issue B", "", "task", 2, "", nil, "")
+
+	if err := s.AddFollows(b.ID, a.ID); err != nil {
+		t.Fatalf("AddFollows: %v", err)
+	}
+
+	bRead, _ := s.ReadIssue(b.ID)
+	aRead, _ := s.ReadIssue(a.ID)
+
+	if !contains(bRead.Follows, a.ID) {
+		t.Errorf("B.Follows should contain A: %v", bRead.Follows)
+	}
+	if !contains(aRead.LedTo, b.ID) {
+		t.Errorf("A.LedTo should contain B: %v", aRead.LedTo)
+	}
+
+	// Verify wikilinks in body.
+	if !strings.Contains(bRead.Body, "Follows: [["+a.ID+"]]") {
+		t.Errorf("B body should contain Follows wikilink:\n%s", bRead.Body)
+	}
+	if !strings.Contains(aRead.Body, "Led to: [["+b.ID+"]]") {
+		t.Errorf("A body should contain Led to wikilink:\n%s", aRead.Body)
+	}
+}
+
+func TestAddFollowsIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Init(dir, "TST", "tester")
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	a, _ := s.CreateIssue("Issue A", "", "task", 2, "", nil, "")
+	b, _ := s.CreateIssue("Issue B", "", "task", 2, "", nil, "")
+
+	_ = s.AddFollows(b.ID, a.ID)
+	_ = s.AddFollows(b.ID, a.ID) // second call
+
+	bRead, _ := s.ReadIssue(b.ID)
+	count := 0
+	for _, f := range bRead.Follows {
+		if f == a.ID {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected 1 follows entry, got %d: %v", count, bRead.Follows)
+	}
+}
+
+func TestRemoveFollows(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Init(dir, "TST", "tester")
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	a, _ := s.CreateIssue("Issue A", "", "task", 2, "", nil, "")
+	b, _ := s.CreateIssue("Issue B", "", "task", 2, "", nil, "")
+
+	_ = s.AddFollows(b.ID, a.ID)
+	if err := s.RemoveFollows(b.ID, a.ID); err != nil {
+		t.Fatalf("RemoveFollows: %v", err)
+	}
+
+	bRead, _ := s.ReadIssue(b.ID)
+	aRead, _ := s.ReadIssue(a.ID)
+
+	if len(bRead.Follows) != 0 {
+		t.Errorf("B.Follows should be empty: %v", bRead.Follows)
+	}
+	if len(aRead.LedTo) != 0 {
+		t.Errorf("A.LedTo should be empty: %v", aRead.LedTo)
+	}
+}
+
+func TestUpdateStatusAppendsHistory(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Init(dir, "TST", "tester")
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	issue, _ := s.CreateIssue("Test", "", "task", 2, "", nil, "")
+	_ = s.UpdateStatus(issue.ID, model.StatusInProgress)
+
+	read, _ := s.ReadIssue(issue.ID)
+	if !strings.Contains(read.Body, "status: open -> in_progress") {
+		t.Errorf("body should contain status transition history:\n%s", read.Body)
+	}
+}
+
+func TestCloseAppendsHistory(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Init(dir, "TST", "tester")
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	issue, _ := s.CreateIssue("Test", "", "task", 2, "", nil, "")
+	_ = s.CloseIssue(issue.ID, "done")
+
+	read, _ := s.ReadIssue(issue.ID)
+	if !strings.Contains(read.Body, "status: open -> closed") {
+		t.Errorf("body should contain close history:\n%s", read.Body)
+	}
+}
+
+func TestReopenAppendsHistory(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Init(dir, "TST", "tester")
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	issue, _ := s.CreateIssue("Test", "", "task", 2, "", nil, "")
+	_ = s.CloseIssue(issue.ID, "")
+	_ = s.ReopenIssue(issue.ID)
+
+	read, _ := s.ReadIssue(issue.ID)
+	if !strings.Contains(read.Body, "status: closed -> open (reopened)") {
+		t.Errorf("body should contain reopen history:\n%s", read.Body)
+	}
+}
+
+func TestAutoFollowsFromWasBlockedBy(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Init(dir, "TST", "tester")
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	a, _ := s.CreateIssue("Design auth", "", "task", 2, "", nil, "")
+	b, _ := s.CreateIssue("Implement auth", "", "task", 2, "", nil, "")
+
+	// B blocked by A.
+	_ = s.AddDependency(b.ID, a.ID)
+	// Close A.
+	_ = s.CloseIssue(a.ID, "done")
+	// Remove dep (archives to was_blocked_by).
+	_ = s.RemoveDependency(b.ID, a.ID)
+	// Start B -- should auto-follow A.
+	_ = s.UpdateStatus(b.ID, model.StatusInProgress)
+
+	bRead, _ := s.ReadIssue(b.ID)
+	if !contains(bRead.Follows, a.ID) {
+		t.Errorf("B.Follows should contain A after auto-follow: %v", bRead.Follows)
+	}
+
+	aRead, _ := s.ReadIssue(a.ID)
+	if !contains(aRead.LedTo, b.ID) {
+		t.Errorf("A.LedTo should contain B after auto-follow: %v", aRead.LedTo)
+	}
+}
+
+func TestAutoFollowsFromSibling(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Init(dir, "TST", "tester")
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	epic, _ := s.CreateIssue("Epic", "", "epic", 2, "", nil, "")
+	a, _ := s.CreateIssue("Task A", "", "task", 2, "", nil, epic.ID)
+	b, _ := s.CreateIssue("Task B", "", "task", 2, "", nil, epic.ID)
+
+	// Close A.
+	_ = s.CloseIssue(a.ID, "done")
+	// Start B -- should auto-follow A (sibling fallback).
+	_ = s.UpdateStatus(b.ID, model.StatusInProgress)
+
+	bRead, _ := s.ReadIssue(b.ID)
+	if !contains(bRead.Follows, a.ID) {
+		t.Errorf("B.Follows should contain A (sibling auto-follow): %v", bRead.Follows)
+	}
+}
+
+func TestAutoFollowsSkipsExisting(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Init(dir, "TST", "tester")
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	epic, _ := s.CreateIssue("Epic", "", "epic", 2, "", nil, "")
+	a, _ := s.CreateIssue("Task A", "", "task", 2, "", nil, epic.ID)
+	b, _ := s.CreateIssue("Task B", "", "task", 2, "", nil, epic.ID)
+
+	_ = s.CloseIssue(a.ID, "done")
+	// Manually add follows first.
+	_ = s.AddFollows(b.ID, a.ID)
+	// Now start B -- auto-follow should skip A since already present.
+	_ = s.UpdateStatus(b.ID, model.StatusInProgress)
+
+	bRead, _ := s.ReadIssue(b.ID)
+	count := 0
+	for _, f := range bRead.Follows {
+		if f == a.ID {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected 1 follows entry for A, got %d: %v", count, bRead.Follows)
+	}
+}
+
+func TestDeleteIssueCleanupFollows(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Init(dir, "TST", "tester")
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	a, _ := s.CreateIssue("Issue A", "", "task", 2, "", nil, "")
+	b, _ := s.CreateIssue("Issue B", "", "task", 2, "", nil, "")
+
+	_ = s.AddFollows(b.ID, a.ID)
+
+	// Delete B -- should clean up A.LedTo.
+	_, err = s.DeleteIssue(b.ID, false)
+	if err != nil {
+		t.Fatalf("delete B: %v", err)
+	}
+
+	aRead, _ := s.ReadIssue(a.ID)
+	if contains(aRead.LedTo, b.ID) {
+		t.Errorf("A.LedTo should not contain deleted B: %v", aRead.LedTo)
+	}
+}
+
+func TestDepAddAppendsHistory(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Init(dir, "TST", "tester")
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	a, _ := s.CreateIssue("Issue A", "", "task", 2, "", nil, "")
+	b, _ := s.CreateIssue("Issue B", "", "task", 2, "", nil, "")
+
+	_ = s.AddDependency(b.ID, a.ID)
+
+	bRead, _ := s.ReadIssue(b.ID)
+	aRead, _ := s.ReadIssue(a.ID)
+
+	if !strings.Contains(bRead.Body, "dep_added: blocked_by "+a.ID) {
+		t.Errorf("B body should contain dep_added history:\n%s", bRead.Body)
+	}
+	if !strings.Contains(aRead.Body, "dep_added: blocks "+b.ID) {
+		t.Errorf("A body should contain dep_added history:\n%s", aRead.Body)
+	}
+}
+
+func TestDepRemoveAppendsHistory(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Init(dir, "TST", "tester")
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	a, _ := s.CreateIssue("Issue A", "", "task", 2, "", nil, "")
+	b, _ := s.CreateIssue("Issue B", "", "task", 2, "", nil, "")
+
+	_ = s.AddDependency(b.ID, a.ID)
+	_ = s.RemoveDependency(b.ID, a.ID)
+
+	bRead, _ := s.ReadIssue(b.ID)
+	aRead, _ := s.ReadIssue(a.ID)
+
+	if !strings.Contains(bRead.Body, "dep_removed: was_blocked_by "+a.ID) {
+		t.Errorf("B body should contain dep_removed history:\n%s", bRead.Body)
+	}
+	if !strings.Contains(aRead.Body, "dep_removed: no_longer_blocks "+b.ID) {
+		t.Errorf("A body should contain dep_removed history:\n%s", aRead.Body)
+	}
+}

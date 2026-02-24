@@ -114,6 +114,21 @@ var updateCmd = &cobra.Command{
 			changed = true
 		}
 
+		if cmd.Flags().Changed("follows") {
+			v, _ := cmd.Flags().GetString("follows")
+			if err := s.AddFollows(id, v); err != nil {
+				return err
+			}
+			changed = true
+		}
+		if cmd.Flags().Changed("unfollow") {
+			v, _ := cmd.Flags().GetString("unfollow")
+			if err := s.RemoveFollows(id, v); err != nil {
+				return err
+			}
+			changed = true
+		}
+
 		if cmd.Flags().Changed("set-labels") {
 			v, _ := cmd.Flags().GetString("set-labels")
 			if v == "" {
@@ -211,6 +226,8 @@ func init() {
 	updateCmd.Flags().StringP("description", "d", "", "new description")
 	updateCmd.Flags().String("parent", "", "set parent issue ID (empty to clear)")
 	updateCmd.Flags().String("body-file", "", "read description from file (- for stdin)")
+	updateCmd.Flags().String("follows", "", "add follows link to predecessor issue")
+	updateCmd.Flags().String("unfollow", "", "remove follows link from predecessor issue")
 	updateCmd.Flags().String("set-labels", "", "replace all labels (comma-separated, empty to clear)")
 	updateCmd.Flags().StringSlice("add-label", nil, "add labels")
 	updateCmd.Flags().StringSlice("remove-label", nil, "remove labels")

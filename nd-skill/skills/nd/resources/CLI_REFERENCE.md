@@ -1,7 +1,7 @@
 # CLI Command Reference
 
 **For:** AI agents and developers using the nd command-line interface
-**Version:** 0.3.0+
+**Version:** 0.4.0+
 
 ## Quick Navigation
 
@@ -9,6 +9,7 @@
 - [Issue Management](#issue-management)
 - [Finding Work](#finding-work)
 - [Dependencies](#dependencies)
+- [Execution Paths](#execution-paths)
 - [Labels and Comments](#labels-and-comments)
 - [Epics](#epics)
 - [Visualization](#visualization)
@@ -94,6 +95,10 @@ nd update PROJ-a3f --body-file=updated-spec.md
 nd update PROJ-a3f --parent=PROJ-epic             # Set parent
 nd update PROJ-a3f --parent=""                     # Clear parent
 
+# Execution path management
+nd update PROJ-a3f --follows=PROJ-b7c             # Add follows link (PROJ-a3f follows PROJ-b7c)
+nd update PROJ-a3f --unfollow=PROJ-b7c            # Remove follows link
+
 # Label management
 nd update PROJ-a3f --set-labels=auth,urgent        # Replace all labels
 nd update PROJ-a3f --add-label=security            # Add label(s)
@@ -119,12 +124,17 @@ nd close PROJ-a3f                                 # Close single
 nd close PROJ-a3f PROJ-b7c                        # Close multiple (batch)
 nd close PROJ-a3f --reason="Implemented"          # With reason
 nd close PROJ-a3f --suggest-next                  # Show next ready issue after closing
+nd close PROJ-a3f --start=PROJ-b7c                # Close and start next issue (auto-links)
 
 # Reopen a closed issue
 nd reopen PROJ-a3f
 ```
 
 When FSM is enabled, `nd close` requires the issue to be at the step immediately before `closed` in the sequence. `nd reopen` is always allowed.
+
+`--start` transitions the specified issue to `in_progress`, triggering auto-follows detection which links the execution chain between the closed and started issues.
+
+All state transitions are recorded in the issue's `## History` section with timestamps.
 
 ### Delete
 
@@ -135,7 +145,7 @@ nd delete PROJ-a3f --dry-run                      # Preview what would be delete
 nd delete PROJ-a3f PROJ-b7c                       # Delete multiple
 ```
 
-Deleting cleans up all dependency references in other issues.
+Deleting cleans up all dependency references and follows/led_to links in other issues.
 
 ### List
 
@@ -222,6 +232,56 @@ nd dep tree PROJ-a3f                              # Show dependency tree from is
 
 Removing a dependency cleans both sides and preserves history in `was_blocked_by`.
 
+## Execution Paths
+
+Execution paths track the temporal order in which issues were worked. Unlike dependencies (structural), execution paths capture the actual journey through the backlog.
+
+```bash
+# Add follows link (B was worked after A)
+nd update PROJ-b7c --follows=PROJ-a3f
+
+# Remove follows link
+nd update PROJ-b7c --unfollow=PROJ-a3f
+
+# View execution path from a specific issue
+nd path PROJ-a3f                                  # Show chain from issue
+
+# View all execution path roots
+nd path                                           # All chain starting points
+```
+
+### Auto-Detection
+
+When an issue transitions to `in_progress`, nd automatically detects predecessors:
+
+1. **From was_blocked_by**: Closed issues that previously blocked this one
+2. **From siblings**: Most recently closed sibling under the same parent epic
+
+Auto-detected links appear in the `## History` section and in the `follows`/`led_to` frontmatter fields.
+
+### Close-and-Start
+
+The `--start` flag on `nd close` combines closing and starting in one operation:
+
+```bash
+nd close PROJ-a3f --start=PROJ-b7c
+# Closes PROJ-a3f, starts PROJ-b7c, auto-links execution path
+```
+
+### History Log
+
+Every state transition, dependency change, and auto-follow detection is recorded in the issue's `## History` section:
+
+```
+## History
+- 2026-02-23T20:15:00Z status: open -> in_progress
+- 2026-02-23T20:15:00Z auto-follows: linked to predecessor PROJ-a3f
+- 2026-02-24T10:30:00Z dep_added: blocked_by PROJ-c4d
+- 2026-02-24T15:00:00Z status: in_progress -> closed
+```
+
+Pre-existing issues without a `## History` section get one auto-created on the first write (self-healing).
+
 ## Labels and Comments
 
 ### Labels
@@ -267,9 +327,13 @@ nd children PROJ-a3f
 nd graph                                          # All root issues (no blockers)
 nd graph --status=in_progress                     # Filter by status
 nd graph --all                                    # Include closed issues
+
+# Execution path tree (follows/led_to chains)
+nd path                                           # All path roots (chain starting points)
+nd path PROJ-a3f                                  # Execution chain from specific issue
 ```
 
-Renders the dependency graph with status-colored nodes and directed edges. Status icons: `[ ]` open, `[>]` in_progress, `[!]` blocked, `[-]` deferred, `[x]` closed.
+`nd graph` renders the dependency graph (structural). `nd path` renders the execution path tree (temporal). Status icons: `[ ]` open, `[>]` in_progress, `[!]` blocked, `[-]` deferred, `[x]` closed.
 
 ## Search and Stats
 

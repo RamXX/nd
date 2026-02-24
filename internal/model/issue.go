@@ -156,6 +156,8 @@ type Issue struct {
 	BlockedBy    []string  `yaml:"blocked_by,omitempty"`
 	WasBlockedBy []string  `yaml:"was_blocked_by,omitempty"`
 	Related      []string  `yaml:"related,omitempty"`
+	Follows      []string  `yaml:"follows,omitempty"`
+	LedTo        []string  `yaml:"led_to,omitempty"`
 	CreatedAt    time.Time `yaml:"created_at"`
 	CreatedBy    string    `yaml:"created_by"`
 	UpdatedAt    time.Time `yaml:"updated_at"`
