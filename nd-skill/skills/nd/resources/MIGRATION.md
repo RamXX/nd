@@ -36,6 +36,20 @@ nd stats
 nd doctor
 ```
 
+The import is idempotent. If you run it again after all issues already exist, Pass 1 detects no new work and skips passes 2 and 3, printing:
+
+```
+All issues already exist. Use --force to re-wire dependencies.
+```
+
+To force dependency wiring and trajectory inference on an already-imported vault (e.g., after updating the import logic):
+
+```bash
+nd import --from-beads .beads/issues.jsonl --force
+```
+
+`--force` runs passes 2 and 3 unconditionally, even when zero new issues were created. Relationship operations (`AddDependency`, `AddRelated`, `AddFollows`, `SetParent`) are no-ops when the relationship already exists, so `--force` is safe to run multiple times without creating duplicate history entries.
+
 ## What Gets Imported
 
 | Field | Imported | Notes |

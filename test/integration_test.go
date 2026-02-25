@@ -633,6 +633,117 @@ func TestFSMWorkflow(t *testing.T) {
 	}
 }
 
+func TestMigrateIdempotent(t *testing.T) {
+	dir := t.TempDir()
+
+	s, err := store.Init(dir, "IDP", "idempotent-tester")
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	// === First migration: create issues and wire deps ===
+	epic, err := s.CreateIssueWithID("IDP-epic1", "Auth Epic", "Implement auth", "epic", 1, "", nil, "")
+	if err != nil {
+		t.Fatalf("create epic: %v", err)
+	}
+	ch1, err := s.CreateIssueWithID("IDP-ch01", "Design auth", "Design the flow", "task", 1, "alice", nil, "")
+	if err != nil {
+		t.Fatalf("create ch1: %v", err)
+	}
+	ch2, err := s.CreateIssueWithID("IDP-ch02", "Implement auth", "Build the flow", "task", 1, "bob", nil, "")
+	if err != nil {
+		t.Fatalf("create ch2: %v", err)
+	}
+	rel1, err := s.CreateIssueWithID("IDP-rel1", "Research OAuth", "Investigate", "task", 2, "", nil, "")
+	if err != nil {
+		t.Fatalf("create rel1: %v", err)
+	}
+
+	// Wire dependencies.
+	_ = s.SetParent(ch1.ID, epic.ID)
+	_ = s.SetParent(ch2.ID, epic.ID)
+	_ = s.AddDependency(ch2.ID, ch1.ID)
+	_ = s.AddRelated(rel1.ID, ch1.ID)
+
+	// Close children to enable follows inference.
+	_ = s.CloseIssue(ch1.ID, "done")
+	_ = s.UpdateField(ch1.ID, "closed_at", "2026-01-10T10:00:00Z")
+	_ = s.CloseIssue(ch2.ID, "done")
+	_ = s.UpdateField(ch2.ID, "closed_at", "2026-01-11T10:00:00Z")
+
+	// Wire follows.
+	_ = s.AddFollows(ch2.ID, ch1.ID)
+
+	// Snapshot all issue bodies after first migration.
+	allIssues, _ := s.ListIssues(store.FilterOptions{Status: "all"})
+	bodySnapshot := map[string]string{}
+	for _, issue := range allIssues {
+		bodySnapshot[issue.ID] = issue.Body
+	}
+
+	// === Second migration: re-attempt everything ===
+
+	// Re-creating issues should fail (already exist).
+	_, err = s.CreateIssueWithID("IDP-epic1", "Auth Epic", "Implement auth", "epic", 1, "", nil, "")
+	if err == nil {
+		t.Error("expected error re-creating IDP-epic1")
+	}
+	_, err = s.CreateIssueWithID("IDP-ch01", "Design auth", "Design the flow", "task", 1, "alice", nil, "")
+	if err == nil {
+		t.Error("expected error re-creating IDP-ch01")
+	}
+
+	// Re-wire dependencies -- should be no-ops (idempotent).
+	_ = s.SetParent(ch1.ID, epic.ID)
+	_ = s.SetParent(ch2.ID, epic.ID)
+	_ = s.AddDependency(ch2.ID, ch1.ID)
+	_ = s.AddRelated(rel1.ID, ch1.ID)
+	_ = s.AddFollows(ch2.ID, ch1.ID)
+
+	// Verify bodies have not changed.
+	allAfter, _ := s.ListIssues(store.FilterOptions{Status: "all"})
+	for _, issue := range allAfter {
+		before, ok := bodySnapshot[issue.ID]
+		if !ok {
+			t.Errorf("unexpected issue %s after second migration", issue.ID)
+			continue
+		}
+		if issue.Body != before {
+			t.Errorf("body of %s changed after idempotent re-wire:\n--- before ---\n%s\n--- after ---\n%s",
+				issue.ID, before, issue.Body)
+		}
+	}
+
+	// Verify no duplicate relationship entries.
+	ch2Read, _ := s.ReadIssue(ch2.ID)
+	if count := countInSlice(ch2Read.BlockedBy, ch1.ID); count != 1 {
+		t.Errorf("expected 1 blocked_by entry, got %d: %v", count, ch2Read.BlockedBy)
+	}
+	if count := countInSlice(ch2Read.Follows, ch1.ID); count != 1 {
+		t.Errorf("expected 1 follows entry, got %d: %v", count, ch2Read.Follows)
+	}
+
+	rel1Read, _ := s.ReadIssue(rel1.ID)
+	if count := countInSlice(rel1Read.Related, ch1.ID); count != 1 {
+		t.Errorf("expected 1 related entry, got %d: %v", count, rel1Read.Related)
+	}
+
+	ch1Read, _ := s.ReadIssue(ch1.ID)
+	if ch1Read.Parent != epic.ID {
+		t.Errorf("ch1 parent = %q, want %q", ch1Read.Parent, epic.ID)
+	}
+}
+
+func countInSlice(ss []string, s string) int {
+	n := 0
+	for _, v := range ss {
+		if v == s {
+			n++
+		}
+	}
+	return n
+}
+
 func containsStr(ss []string, s string) bool {
 	for _, v := range ss {
 		if v == s {

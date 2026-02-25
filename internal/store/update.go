@@ -179,6 +179,12 @@ func (s *Store) UpdateLinksSection(id string) error {
 
 // SetParent sets the parent of an issue and updates the Links section.
 func (s *Store) SetParent(id, parentID string) error {
+	// Early return if parent is already set to the requested value.
+	issue, err := s.ReadIssue(id)
+	if err == nil && issue.Parent == parentID {
+		return nil
+	}
+
 	if parentID == "" {
 		if err := s.vault.PropertyRemove(id, "parent"); err != nil {
 			return err
@@ -355,11 +361,13 @@ func (s *Store) AddFollows(id, predecessorID string) error {
 		return fmt.Errorf("predecessor %s: %w", predecessorID, err)
 	}
 
+	changed := false
 	if !contains(issue.Follows, predecessorID) {
 		newList := append(issue.Follows, predecessorID)
 		if err := s.setListProperty(id, "follows", newList); err != nil {
 			return err
 		}
+		changed = true
 	}
 
 	if !contains(pred.LedTo, id) {
@@ -367,10 +375,13 @@ func (s *Store) AddFollows(id, predecessorID string) error {
 		if err := s.setListProperty(predecessorID, "led_to", newList); err != nil {
 			return err
 		}
+		changed = true
 	}
 
-	_ = s.UpdateLinksSection(id)
-	_ = s.UpdateLinksSection(predecessorID)
+	if changed {
+		_ = s.UpdateLinksSection(id)
+		_ = s.UpdateLinksSection(predecessorID)
+	}
 	return nil
 }
 

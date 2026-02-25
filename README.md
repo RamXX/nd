@@ -530,9 +530,10 @@ Outputs a structured summary for AI context injection: total counts, ready work,
 
 ```bash
 nd import --from-beads <path-to-jsonl>
+nd import --from-beads <path-to-jsonl> --force  # Re-wire deps even if all issues exist
 ```
 
-Three-pass import from beads JSONL: (1) creates all issues preserving original IDs, timestamps, statuses, labels, notes, and design content; (2) wires dependencies (parent-child inferred from dotted IDs and cross-references, blocks, related) and promotes parents to epics; (3) infers `follows`/`led_to` execution trajectories from `closed_at` timestamps -- sibling chains, related orphan chains, and epic-to-epic chains. After migration, `nd path` shows the full execution history.
+Three-pass import from beads JSONL: (1) creates all issues preserving original IDs, timestamps, statuses, labels, notes, and design content; (2) wires dependencies (parent-child inferred from dotted IDs and cross-references, blocks, related) and promotes parents to epics; (3) infers `follows`/`led_to` execution trajectories from `closed_at` timestamps -- sibling chains, related orphan chains, and epic-to-epic chains. After migration, `nd path` shows the full execution history. The import is idempotent: if Pass 1 finds that all issues already exist, passes 2 and 3 are skipped automatically. Use `--force` to re-run dependency wiring and trajectory inference on an already-imported vault.
 
 ### Vault Health
 

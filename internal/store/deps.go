@@ -23,11 +23,13 @@ func (s *Store) AddDependency(issueID, depID string) error {
 	}
 
 	// Update issue's blocked_by if not already present.
+	changed := false
 	if !contains(issue.BlockedBy, depID) {
 		newList := append(issue.BlockedBy, depID)
 		if err := s.setListProperty(issueID, "blocked_by", newList); err != nil {
 			return err
 		}
+		changed = true
 	}
 
 	// Update dep's blocks if not already present.
@@ -36,14 +38,15 @@ func (s *Store) AddDependency(issueID, depID string) error {
 		if err := s.setListProperty(depID, "blocks", newList); err != nil {
 			return err
 		}
+		changed = true
 	}
 
-	// Update Links sections for both sides.
-	_ = s.UpdateLinksSection(issueID)
-	_ = s.UpdateLinksSection(depID)
-
-	_ = s.appendHistory(issueID, fmt.Sprintf("dep_added: blocked_by %s", depID))
-	_ = s.appendHistory(depID, fmt.Sprintf("dep_added: blocks %s", issueID))
+	if changed {
+		_ = s.UpdateLinksSection(issueID)
+		_ = s.UpdateLinksSection(depID)
+		_ = s.appendHistory(issueID, fmt.Sprintf("dep_added: blocked_by %s", depID))
+		_ = s.appendHistory(depID, fmt.Sprintf("dep_added: blocks %s", issueID))
+	}
 
 	return nil
 }
@@ -122,11 +125,13 @@ func (s *Store) AddRelated(issueID, relatedID string) error {
 		return fmt.Errorf("related %s: %w", relatedID, err)
 	}
 
+	changed := false
 	if !contains(issue.Related, relatedID) {
 		newList := append(issue.Related, relatedID)
 		if err := s.setListProperty(issueID, "related", newList); err != nil {
 			return err
 		}
+		changed = true
 	}
 
 	if !contains(rel.Related, issueID) {
@@ -134,10 +139,13 @@ func (s *Store) AddRelated(issueID, relatedID string) error {
 		if err := s.setListProperty(relatedID, "related", newList); err != nil {
 			return err
 		}
+		changed = true
 	}
 
-	_ = s.UpdateLinksSection(issueID)
-	_ = s.UpdateLinksSection(relatedID)
+	if changed {
+		_ = s.UpdateLinksSection(issueID)
+		_ = s.UpdateLinksSection(relatedID)
+	}
 
 	return nil
 }

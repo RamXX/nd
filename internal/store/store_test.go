@@ -1205,6 +1205,135 @@ func TestDepAddAppendsHistory(t *testing.T) {
 	}
 }
 
+func TestAddDependencyIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Init(dir, "TST", "tester")
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	a, _ := s.CreateIssue("Issue A", "", "task", 2, "", nil, "")
+	b, _ := s.CreateIssue("Issue B", "", "task", 2, "", nil, "")
+
+	// First call -- should wire and record history.
+	if err := s.AddDependency(b.ID, a.ID); err != nil {
+		t.Fatalf("AddDependency first: %v", err)
+	}
+
+	// Second call -- should be a no-op.
+	if err := s.AddDependency(b.ID, a.ID); err != nil {
+		t.Fatalf("AddDependency second: %v", err)
+	}
+
+	// Verify only one blocked_by entry.
+	bRead, _ := s.ReadIssue(b.ID)
+	count := 0
+	for _, bb := range bRead.BlockedBy {
+		if bb == a.ID {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected 1 blocked_by entry, got %d: %v", count, bRead.BlockedBy)
+	}
+
+	// Verify only one dep_added history entry on B.
+	depAddedCount := strings.Count(bRead.Body, "dep_added: blocked_by "+a.ID)
+	if depAddedCount != 1 {
+		t.Errorf("expected 1 dep_added history entry on B, got %d", depAddedCount)
+	}
+
+	// Verify only one dep_added history entry on A.
+	aRead, _ := s.ReadIssue(a.ID)
+	depAddedCountA := strings.Count(aRead.Body, "dep_added: blocks "+b.ID)
+	if depAddedCountA != 1 {
+		t.Errorf("expected 1 dep_added history entry on A, got %d", depAddedCountA)
+	}
+}
+
+func TestSetParentIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Init(dir, "TST", "tester")
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	epic, _ := s.CreateIssue("Epic", "", "epic", 2, "", nil, "")
+	child, _ := s.CreateIssue("Child", "", "task", 2, "", nil, "")
+
+	// First call.
+	if err := s.SetParent(child.ID, epic.ID); err != nil {
+		t.Fatalf("SetParent first: %v", err)
+	}
+	read1, _ := s.ReadIssue(child.ID)
+	updatedAt1 := read1.UpdatedAt
+
+	// Second call -- should be a no-op (parent already set).
+	if err := s.SetParent(child.ID, epic.ID); err != nil {
+		t.Fatalf("SetParent second: %v", err)
+	}
+	read2, _ := s.ReadIssue(child.ID)
+
+	// Parent should still be set.
+	if read2.Parent != epic.ID {
+		t.Errorf("parent = %q, want %q", read2.Parent, epic.ID)
+	}
+
+	// updated_at should NOT have changed (no-op).
+	if read2.UpdatedAt != updatedAt1 {
+		t.Errorf("updated_at changed on idempotent SetParent: %q -> %q", updatedAt1, read2.UpdatedAt)
+	}
+}
+
+func TestAddFollowsIdempotentNoExtraLinks(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Init(dir, "TST", "tester")
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	a, _ := s.CreateIssue("Issue A", "", "task", 2, "", nil, "")
+	b, _ := s.CreateIssue("Issue B", "", "task", 2, "", nil, "")
+
+	// First call.
+	_ = s.AddFollows(b.ID, a.ID)
+	read1, _ := s.ReadIssue(b.ID)
+	body1 := read1.Body
+
+	// Second call -- should be a no-op.
+	_ = s.AddFollows(b.ID, a.ID)
+	read2, _ := s.ReadIssue(b.ID)
+
+	// Body should not have changed (no extra UpdateLinksSection calls).
+	if read2.Body != body1 {
+		t.Errorf("body changed on idempotent AddFollows")
+	}
+}
+
+func TestAddRelatedIdempotentNoExtraLinks(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Init(dir, "TST", "tester")
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	a, _ := s.CreateIssue("Issue A", "", "task", 2, "", nil, "")
+	b, _ := s.CreateIssue("Issue B", "", "task", 2, "", nil, "")
+
+	// First call.
+	_ = s.AddRelated(a.ID, b.ID)
+	readA1, _ := s.ReadIssue(a.ID)
+	bodyA1 := readA1.Body
+
+	// Second call -- should be a no-op.
+	_ = s.AddRelated(a.ID, b.ID)
+	readA2, _ := s.ReadIssue(a.ID)
+
+	if readA2.Body != bodyA1 {
+		t.Errorf("body changed on idempotent AddRelated")
+	}
+}
+
 func TestDepRemoveAppendsHistory(t *testing.T) {
 	dir := t.TempDir()
 	s, err := Init(dir, "TST", "tester")

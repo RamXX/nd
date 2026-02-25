@@ -31,6 +31,7 @@ var migrateCmd = &cobra.Command{
 		if fromBeads == "" {
 			return fmt.Errorf("--from-beads is required")
 		}
+		force, _ := cmd.Flags().GetBool("force")
 
 		s, err := store.Open(resolveVaultDir())
 		if err != nil {
@@ -201,6 +202,13 @@ var migrateCmd = &cobra.Command{
 
 		if err := scanner.Err(); err != nil {
 			return fmt.Errorf("scan: %w", err)
+		}
+
+		// Gate: skip passes 2-3 if nothing was imported (idempotent re-run).
+		if imported == 0 && !force {
+			fmt.Printf("Migrated %d issues (%d skipped)\n", imported, skipped)
+			fmt.Println("All issues already exist. Use --force to re-wire dependencies.")
+			return nil
 		}
 
 		// Infer parent-child from dotted IDs (e.g. TM-abc.3 -> parent TM-abc).
@@ -634,5 +642,6 @@ func extractInt(m map[string]any, key string, fallback int) int {
 
 func init() {
 	migrateCmd.Flags().String("from-beads", "", "path to beads JSONL file")
+	migrateCmd.Flags().Bool("force", false, "re-wire dependencies even if no new issues were imported")
 	rootCmd.AddCommand(migrateCmd)
 }
