@@ -7,6 +7,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var version = "dev"
+
 var (
 	vaultDir string
 	jsonOut  bool
@@ -18,6 +20,7 @@ var rootCmd = &cobra.Command{
 	Use:          "nd",
 	Short:        "Vault-backed issue tracker",
 	Long:         "nd -- Git-native issue tracking with Obsidian-compatible markdown files.",
+	Version:      version,
 	SilenceUsage: true,
 }
 

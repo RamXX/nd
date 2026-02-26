@@ -1,7 +1,7 @@
 # CLI Command Reference
 
 **For:** AI agents and developers using the nd command-line interface
-**Version:** 0.5.0+
+**Version:** 0.6.0+
 
 ## Quick Navigation
 
@@ -24,10 +24,17 @@
 
 ```bash
 # Create a new nd vault
-nd init --prefix=PROJ                    # Required: issue ID prefix
+nd init                                  # Infers prefix from git remote or directory name
+nd init --prefix=PROJ                    # Explicit prefix
 nd init --prefix=PROJ --vault=/path      # Custom vault location
 nd init --prefix=PROJ --author=alice     # Custom default author
 ```
+
+When `--prefix` is omitted, nd infers it automatically:
+1. Parse the git remote origin URL and extract the repo name (e.g., `my-project` -> `MP`)
+2. Fallback: use the current directory basename (e.g., `tminus` -> `TMI`)
+
+The inferred prefix is printed: `Inferred prefix: MP (from git remote "my-project")`
 
 ## Issue Management
 
@@ -436,15 +443,20 @@ Doctor checks:
 ## Migration
 
 ```bash
-# Import from beads JSONL
-nd import --from-beads .beads/issues.jsonl
+# Import from beads JSONL (auto-initializes vault if needed)
+nd migrate --from-beads .beads/issues.jsonl
 
 # Re-run is idempotent (no-op if all issues exist)
-nd import --from-beads .beads/issues.jsonl
+nd migrate --from-beads .beads/issues.jsonl
 
 # Force re-wire dependencies on an existing vault
-nd import --from-beads .beads/issues.jsonl --force
+nd migrate --from-beads .beads/issues.jsonl --force
 ```
+
+If the vault is not initialized, `nd migrate` auto-initializes it before importing:
+1. Peeks at the first JSONL line's `id` field to extract the prefix (e.g., `TM-a3f8` -> `TM`)
+2. Falls back to git remote / directory name inference if no ID found
+3. Prints: `Auto-initialized vault at .vault (prefix: TM, inferred from issue IDs)`
 
 Three-pass import:
 1. **Pass 1**: Creates all issues, preserving original IDs, timestamps, statuses (including custom), labels, notes, and design content
@@ -458,6 +470,7 @@ The import is idempotent: if Pass 1 imports zero new issues (all already exist),
 All commands support these flags:
 
 ```bash
+--version        # Print nd version and exit (also: -v)
 --vault PATH     # Override vault directory (default: .vault, auto-discovered)
 --json           # Output as JSON
 --verbose        # Verbose output

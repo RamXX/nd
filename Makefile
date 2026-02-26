@@ -8,8 +8,10 @@ help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  %-15s %s\n", $$1, $$2}'
 
+VERSION := $(shell git describe --tags --always 2>/dev/null || echo dev)
+
 build: ## Build nd binary
-	go build -o $(BIN) .
+	go build -ldflags "-X github.com/RamXX/nd/cmd.version=$(VERSION)" -o $(BIN) .
 
 test: ## Run tests
 	go test -v ./...

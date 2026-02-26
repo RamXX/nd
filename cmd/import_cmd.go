@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/user"
 	"regexp"
 	"sort"
 	"strings"
@@ -33,9 +34,42 @@ var migrateCmd = &cobra.Command{
 		}
 		force, _ := cmd.Flags().GetBool("force")
 
-		s, err := store.Open(resolveVaultDir())
-		if err != nil {
-			return err
+		dir := resolveVaultDir()
+
+		// Auto-init vault if it doesn't exist yet.
+		var s *store.Store
+		if _, statErr := os.Stat(dir + "/.nd.yaml"); os.IsNotExist(statErr) {
+			// Infer prefix: first try issue IDs in the JSONL, then git/dir.
+			prefix := peekBeadsPrefix(fromBeads)
+			source := "issue IDs"
+			if prefix == "" {
+				var inferSource string
+				prefix, inferSource = inferPrefix()
+				source = inferSource
+			}
+			if prefix == "" {
+				return fmt.Errorf("vault not initialized and could not infer prefix; run nd init --prefix <PREFIX> first")
+			}
+
+			author := "unknown"
+			if u, uErr := user.Current(); uErr == nil {
+				author = u.Username
+			}
+
+			var initErr error
+			s, initErr = store.Init(dir, prefix, author)
+			if initErr != nil {
+				return fmt.Errorf("auto-init vault: %w", initErr)
+			}
+			if !quiet {
+				fmt.Printf("Auto-initialized vault at %s (prefix: %s, inferred from %s)\n", dir, prefix, source)
+			}
+		} else {
+			var openErr error
+			s, openErr = store.Open(dir)
+			if openErr != nil {
+				return openErr
+			}
 		}
 
 		f, err := os.Open(fromBeads)

@@ -25,15 +25,24 @@ ls .beads/issues.jsonl
 ## Import into nd
 
 ```bash
-# Initialize nd vault
-nd init --prefix=PROJ --vault=.vault
-
-# Import beads issues
-nd import --from-beads .beads/issues.jsonl
+# Import beads issues (auto-initializes vault, infers prefix from issue IDs)
+nd migrate --from-beads .beads/issues.jsonl
 
 # Verify
 nd stats
 nd doctor
+```
+
+`nd migrate` auto-initializes the vault if `.nd.yaml` doesn't exist:
+1. Peeks at the first JSONL line's `id` field to extract the prefix (e.g., `TM-a3f8` -> `TM`)
+2. Falls back to git remote / directory name inference if no ID found
+3. Prints: `Auto-initialized vault at .vault (prefix: TM, inferred from issue IDs)`
+
+To initialize manually first (e.g., with a custom prefix):
+
+```bash
+nd init --prefix=PROJ
+nd migrate --from-beads .beads/issues.jsonl
 ```
 
 The import is idempotent. If you run it again after all issues already exist, Pass 1 detects no new work and skips passes 2 and 3, printing:

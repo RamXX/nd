@@ -5,7 +5,7 @@ description: >
   Use for multi-session work, dependency tracking, and persistent context that
   survives conversation compaction. No database server. No size limits. Git-native.
 allowed-tools: "Read,Bash(nd:*)"
-version: "0.5.1"
+version: "0.6.0"
 author: "Ramiro Salas <https://github.com/RamXX>"
 license: "Apache-2.0"
 ---
@@ -41,7 +41,7 @@ Vault-backed issue tracker that stores issues as plain markdown files with YAML 
 ## Prerequisites
 
 ```bash
-nd --help  # Verify nd is installed and in PATH
+nd --version  # Verify nd is installed and in PATH
 ```
 
 - **nd CLI** installed (`make install` from source)

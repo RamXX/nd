@@ -18,7 +18,14 @@ var initCmd = &cobra.Command{
 		dir := resolveVaultDir()
 
 		if prefix == "" {
-			return fmt.Errorf("--prefix is required")
+			var source string
+			prefix, source = inferPrefix()
+			if prefix == "" {
+				return fmt.Errorf("--prefix is required (could not infer from git remote or directory name)")
+			}
+			if !quiet {
+				fmt.Printf("Inferred prefix: %s (from %s)\n", prefix, source)
+			}
 		}
 		if author == "" {
 			u, err := user.Current()
