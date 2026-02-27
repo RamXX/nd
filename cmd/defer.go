@@ -19,6 +19,7 @@ var deferCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		defer s.Close()
 
 		if err := s.DeferIssue(id, until); err != nil {
 			return err

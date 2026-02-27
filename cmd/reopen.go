@@ -17,6 +17,7 @@ var reopenCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		defer s.Close()
 
 		if err := s.ReopenIssue(id); err != nil {
 			return err

@@ -21,6 +21,7 @@ var showCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		defer s.Close()
 
 		issue, err := s.ReadIssue(id)
 		if err != nil {

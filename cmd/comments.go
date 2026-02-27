@@ -26,6 +26,7 @@ var commentsAddCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		defer s.Close()
 
 		// Verify issue exists.
 		if _, err := s.ReadIssue(id); err != nil {
@@ -57,6 +58,7 @@ var commentsListCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		defer s.Close()
 
 		content, err := s.Vault().Read(id, "Comments")
 		if err != nil {

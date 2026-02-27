@@ -22,6 +22,7 @@ var closeCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		defer s.Close()
 
 		var errors []string
 		for _, id := range args {

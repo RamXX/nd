@@ -25,6 +25,7 @@ var epicStatusCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		defer s.Close()
 
 		all, err := s.ListIssues(store.FilterOptions{})
 		if err != nil {
@@ -61,6 +62,7 @@ var epicTreeCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		defer s.Close()
 
 		all, err := s.ListIssues(store.FilterOptions{})
 		if err != nil {
@@ -105,6 +107,7 @@ var epicCloseEligibleCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		defer s.Close()
 
 		all, err := s.ListIssues(store.FilterOptions{})
 		if err != nil {

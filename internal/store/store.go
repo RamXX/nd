@@ -24,23 +24,42 @@ type Config struct {
 }
 
 // Store wraps a vlt.Vault with issue-tracker operations.
+// All operations are protected by an advisory file lock acquired at Open.
+// Callers must call Close() when done to release the lock.
 type Store struct {
 	vault  *vlt.Vault
 	config Config
 	dir    string
+	unlock func() // releases the advisory file lock; nil if not locked
 }
 
-// Open opens an existing nd vault at dir.
+// Open opens an existing nd vault at dir, acquiring an exclusive advisory lock.
+// The lock is held until Close() is called.
 func Open(dir string) (*Store, error) {
+	unlock, err := vlt.LockVault(dir, true)
+	if err != nil {
+		return nil, fmt.Errorf("lock vault: %w", err)
+	}
+
 	v, err := vlt.Open(dir)
 	if err != nil {
+		unlock()
 		return nil, fmt.Errorf("open vault: %w", err)
 	}
-	s := &Store{vault: v, dir: dir}
+	s := &Store{vault: v, dir: dir, unlock: unlock}
 	if err := s.loadConfig(); err != nil {
+		unlock()
 		return nil, fmt.Errorf("load config: %w", err)
 	}
 	return s, nil
+}
+
+// Close releases the advisory file lock. Safe to call multiple times.
+func (s *Store) Close() {
+	if s.unlock != nil {
+		s.unlock()
+		s.unlock = nil
+	}
 }
 
 // Init creates a new nd vault at dir.

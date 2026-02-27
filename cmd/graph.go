@@ -21,6 +21,7 @@ var graphCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		defer s.Close()
 
 		all, err := s.ListIssues(store.FilterOptions{})
 		if err != nil {

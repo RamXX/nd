@@ -3,7 +3,7 @@ module github.com/RamXX/nd
 go 1.25.0
 
 require (
-	github.com/RamXX/vlt v0.7.1
+	github.com/RamXX/vlt v0.8.1
 	github.com/charmbracelet/glamour v0.10.0
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834
 	github.com/muesli/termenv v0.16.0

@@ -58,7 +58,7 @@ Both tools use the same ID format (`PREFIX-HASH`, 4 base36 chars from SHA-256) f
 | Frontmatter | `v.PropertySet()`, `v.PropertyRemove()` | Single-field updates |
 | Search | `v.Search()`, `v.SearchWithContext()` | Full-text search |
 | File listing | `v.Files(folder, ext)` | Issue enumeration |
-| Locking | `vlt.LockVault(dir, exclusive)` | Concurrent access safety |
+| Locking | `vlt.LockVault(dir, exclusive)` | Acquired at Store.Open(), released at Store.Close() |
 | Delete | `v.Delete()` | Soft delete to .trash/ |
 
 nd adds: issue model with validation, collision-resistant ID generation, dependency graph computation (ready/blocked/cycles), execution path tracking (follows/led_to with auto-detection), append-only history logging, content hashing, epic tree traversal, colored CLI output, markdown rendering, configurable FSM enforcement, and custom status support.

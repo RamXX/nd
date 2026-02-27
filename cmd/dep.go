@@ -26,6 +26,7 @@ var depAddCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		defer s.Close()
 		if err := s.AddDependency(issueID, depID); err != nil {
 			return err
 		}
@@ -46,6 +47,7 @@ var depRmCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		defer s.Close()
 		if err := s.RemoveDependency(issueID, depID); err != nil {
 			return err
 		}
@@ -66,6 +68,7 @@ var depListCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		defer s.Close()
 		issue, err := s.ReadIssue(id)
 		if err != nil {
 			return err
@@ -121,6 +124,7 @@ var depRelateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		defer s.Close()
 		if err := s.AddRelated(a, b); err != nil {
 			return err
 		}
@@ -141,6 +145,7 @@ var depUnrelateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		defer s.Close()
 		if err := s.RemoveRelated(a, b); err != nil {
 			return err
 		}
@@ -159,6 +164,7 @@ var depCyclesCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		defer s.Close()
 		all, err := s.ListIssues(store.FilterOptions{})
 		if err != nil {
 			return err
@@ -186,6 +192,7 @@ var depTreeCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		defer s.Close()
 		all, err := s.ListIssues(store.FilterOptions{})
 		if err != nil {
 			return err

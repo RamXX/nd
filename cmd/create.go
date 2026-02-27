@@ -50,6 +50,7 @@ var createCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		defer s.Close()
 
 		issue, err := s.CreateIssue(title, description, issueType, priority, assignee, labels, parent)
 		if err != nil {

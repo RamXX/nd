@@ -23,6 +23,7 @@ var labelsAddCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		defer s.Close()
 		issue, err := s.ReadIssue(id)
 		if err != nil {
 			return err
@@ -56,6 +57,7 @@ var labelsRmCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		defer s.Close()
 		issue, err := s.ReadIssue(id)
 		if err != nil {
 			return err
@@ -99,6 +101,7 @@ var labelsListCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		defer s.Close()
 		issues, err := s.ListIssues(store.FilterOptions{})
 		if err != nil {
 			return err

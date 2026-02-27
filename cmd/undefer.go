@@ -18,6 +18,7 @@ var undeferCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		defer s.Close()
 
 		if err := s.UnDeferIssue(id); err != nil {
 			return err

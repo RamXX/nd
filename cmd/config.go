@@ -21,6 +21,7 @@ var configGetCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		defer s.Close()
 		val, err := s.GetConfigValue(args[0])
 		if err != nil {
 			return err
@@ -39,6 +40,7 @@ var configSetCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		defer s.Close()
 		if err := s.SetConfigValue(args[0], args[1]); err != nil {
 			return err
 		}
@@ -57,6 +59,7 @@ var configListCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		defer s.Close()
 		for _, entry := range s.ConfigEntries() {
 			fmt.Printf("%-20s %s\n", entry[0], entry[1])
 		}

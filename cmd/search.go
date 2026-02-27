@@ -20,6 +20,7 @@ var searchCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		defer s.Close()
 
 		results, err := s.Vault().SearchWithContext(vlt.SearchOptions{
 			Query:    query,

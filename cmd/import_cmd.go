@@ -71,6 +71,7 @@ var migrateCmd = &cobra.Command{
 				return openErr
 			}
 		}
+		defer s.Close()
 
 		f, err := os.Open(fromBeads)
 		if err != nil {

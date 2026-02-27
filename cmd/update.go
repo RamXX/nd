@@ -19,6 +19,7 @@ var updateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		defer s.Close()
 
 		// Verify issue exists.
 		if _, err := s.ReadIssue(id); err != nil {

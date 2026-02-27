@@ -18,6 +18,7 @@ var childrenCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		defer s.Close()
 
 		issues, err := s.ListIssues(store.FilterOptions{Parent: id})
 		if err != nil {
