@@ -24,7 +24,7 @@ When encountering new work during implementation:
 Discovery:
 - [ ] Notice bug, improvement, or follow-up work
 - [ ] Assess: Can defer or is blocker?
-- [ ] Create issue: nd create "Title" --type=bug --priority=1
+- [ ] Create issue: nd create "Title" --type=bug --priority=1  (or: nd create --title="Title" ...)
 - [ ] Add dependency: nd dep add <new-id> <current-id>
 - [ ] If blocker: pause current work, switch to new issue
 - [ ] If deferrable: continue current work, new issue persists for later

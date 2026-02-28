@@ -12,9 +12,19 @@ var qCmd = &cobra.Command{
 	Use:   "q [title]",
 	Short: "Quick capture -- create issue, print only ID",
 	Long:  "Create an issue and print only its ID to stdout, enabling ISSUE=$(nd q \"title\").",
-	Args:  cobra.MinimumNArgs(1),
+	Args:  cobra.MinimumNArgs(0),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		titleFlag, _ := cmd.Flags().GetString("title")
 		title := strings.Join(args, " ")
+		if titleFlag != "" {
+			if title != "" {
+				return fmt.Errorf("provide title as positional argument or --title, not both")
+			}
+			title = titleFlag
+		}
+		if title == "" {
+			return fmt.Errorf("title is required (positional argument or --title)")
+		}
 		issueType, _ := cmd.Flags().GetString("type")
 		priority, _ := cmd.Flags().GetInt("priority")
 		assignee, _ := cmd.Flags().GetString("assignee")
@@ -67,6 +77,7 @@ var qCmd = &cobra.Command{
 }
 
 func init() {
+	qCmd.Flags().String("title", "", "issue title (alternative to positional argument)")
 	qCmd.Flags().StringP("type", "t", "task", "issue type")
 	qCmd.Flags().IntP("priority", "p", 2, "priority 0-4")
 	qCmd.Flags().String("assignee", "", "assignee")

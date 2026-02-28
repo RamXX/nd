@@ -13,9 +13,19 @@ import (
 var createCmd = &cobra.Command{
 	Use:   "create [title]",
 	Short: "Create a new issue",
-	Args:  cobra.MinimumNArgs(1),
+	Args:  cobra.MinimumNArgs(0),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		titleFlag, _ := cmd.Flags().GetString("title")
 		title := strings.Join(args, " ")
+		if titleFlag != "" {
+			if title != "" {
+				return fmt.Errorf("provide title as positional argument or --title, not both")
+			}
+			title = titleFlag
+		}
+		if title == "" {
+			return fmt.Errorf("title is required (positional argument or --title)")
+		}
 		issueType, _ := cmd.Flags().GetString("type")
 		priority, _ := cmd.Flags().GetInt("priority")
 		assignee, _ := cmd.Flags().GetString("assignee")
@@ -70,6 +80,7 @@ var createCmd = &cobra.Command{
 }
 
 func init() {
+	createCmd.Flags().String("title", "", "issue title (alternative to positional argument)")
 	createCmd.Flags().StringP("type", "t", "task", "issue type (bug, feature, task, epic, chore, decision)")
 	createCmd.Flags().IntP("priority", "p", 2, "priority 0-4 (0=critical)")
 	createCmd.Flags().String("assignee", "", "assignee")

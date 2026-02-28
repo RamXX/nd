@@ -332,6 +332,8 @@ Validation rules:
 
 ```bash
 nd create "Title" [flags]
+nd create --title="Title" [flags]
+  --title            Issue title (alternative to positional argument)
   -t, --type         bug|feature|task|epic|chore|decision (default: task)
   -p, --priority     0-4, where 0=critical (default: 2)
   -d, --description  Issue description body
@@ -341,10 +343,13 @@ nd create "Title" [flags]
   --body-file        Read description from file (- for stdin)
 ```
 
+Title can be provided as a positional argument or via `--title`. Using both is an error.
+
 ### Quick Capture
 
 ```bash
 nd q "Title" [flags]   # Alias for create with minimal flags
+nd q --title="Title" [flags]
 ```
 
 ### Listing and Filtering

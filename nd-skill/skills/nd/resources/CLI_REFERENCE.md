@@ -1,7 +1,7 @@
 # CLI Command Reference
 
 **For:** AI agents and developers using the nd command-line interface
-**Version:** 0.6.0+
+**Version:** 0.6.1+
 
 ## Quick Navigation
 
@@ -41,8 +41,11 @@ The inferred prefix is printed: `Inferred prefix: MP (from git remote "my-projec
 ### Create
 
 ```bash
-# Basic creation
+# Basic creation (positional title)
 nd create "Issue title" --type=task --priority=2
+
+# Title via flag (useful for agents)
+nd create --title="Issue title" --type=task --priority=2
 
 # Full options
 nd create "Title" \
@@ -61,6 +64,8 @@ nd create "Title" -t bug -p 1 -d "Description"
 echo "Long description" | nd create "Title" --body-file=-
 ```
 
+Title can be provided as a positional argument or via `--title`. Using both is an error.
+
 Output: `Created PROJ-a3f: Issue title`
 With `--quiet`: just the ID
 With `--json`: `{"id":"PROJ-a3f"}`
@@ -70,6 +75,7 @@ With `--json`: `{"id":"PROJ-a3f"}`
 ```bash
 # Create issue and output only the ID (for scripting)
 nd q "Fix login bug"                              # Outputs: PROJ-a1b2
+nd q --title="Fix login bug"                      # Same, via --title flag
 nd q "Task" -t task -p 1                          # With type and priority
 nd q "Bug" -t bug --labels=critical               # With labels
 
