@@ -1,6 +1,6 @@
 MODULE := github.com/RamXX/nd
 BIN    := nd
-PREFIX := $(HOME)/.local/bin
+PREFIX := $(HOME)/go/bin
 
 PLUGIN_NAME     := nd
 PLUGIN_SRC      := nd-skill
