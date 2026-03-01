@@ -47,6 +47,11 @@ nd --version  # Verify nd is installed and in PATH
 - **nd CLI** installed (`make install` from source)
 - The vault uses [vlt](https://github.com/RamXX/vlt) for all file operations. If you need deeper vault manipulation (frontmatter surgery, wikilinks, templates), consult the **vlt skill** for its full API.
 
+## Shell Usage
+
+Do NOT append `2>&1` to nd commands. nd writes data to stdout and errors to stderr.
+Merging them causes duplicate error display in Claude Code's Bash tool.
+
 ## CLI Reference
 
 **Run `nd prime`** for AI-optimized project context (auto-loaded by hooks).
