@@ -7,7 +7,7 @@ PLUGIN_SRC      := nd-skill
 PLUGIN_CACHE    := $(HOME)/.claude/plugins/cache/$(PLUGIN_NAME)/$(PLUGIN_NAME)
 SETTINGS_FILE   := $(HOME)/.claude/settings.json
 
-.PHONY: help build test vet install install-plugin uninstall-plugin clean
+.PHONY: help build test vet install install-plugin install-skill uninstall-plugin clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
@@ -61,6 +61,8 @@ print('  plugin enabled in settings.json') if changed else print('  plugin alrea
 		echo "  removed stale ~/.claude/skills/nd-skill"; \
 	fi
 	@echo "  nd plugin $(PLUGIN_VERSION) installed -- restart Claude Code to activate"
+
+install-skill: install-plugin ## Alias for install-plugin (matches vlt convention)
 
 uninstall-plugin: ## Remove Claude Code plugin
 	@rm -rf "$(PLUGIN_CACHE)"

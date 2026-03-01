@@ -49,8 +49,11 @@ nd --version  # Verify nd is installed and in PATH
 
 ## Shell Usage
 
-Do NOT append `2>&1` to nd commands. nd writes data to stdout and errors to stderr.
-Merging them causes duplicate error display in Claude Code's Bash tool.
+Do NOT redirect stderr on nd commands. Specifically:
+- No `2>&1` -- merging streams causes duplicate error display in Claude Code
+- No `2>/dev/null` -- swallowing stderr hides errors you need to see
+
+Claude Code's Bash tool already captures and displays stderr separately. Just run nd commands bare.
 
 ## CLI Reference
 
