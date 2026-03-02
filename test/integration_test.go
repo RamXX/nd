@@ -744,6 +744,69 @@ func countInSlice(ss []string, s string) int {
 	return n
 }
 
+// TestCloseUnblocksReadyFront verifies the full workflow: create A and B where
+// B depends on A. Close A with cascade. Verify B appears in the ready set.
+func TestCloseUnblocksReadyFront(t *testing.T) {
+	dir := t.TempDir()
+	s, err := store.Init(dir, "CAS", "cascade-tester")
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	a, err := s.CreateIssue("Foundation work", "Must be done first", "task", 1, "", nil, "")
+	if err != nil {
+		t.Fatalf("create A: %v", err)
+	}
+	b, err := s.CreateIssue("Dependent work", "Needs A first", "task", 1, "", nil, "")
+	if err != nil {
+		t.Fatalf("create B: %v", err)
+	}
+
+	// B depends on A.
+	if err := s.AddDependency(b.ID, a.ID); err != nil {
+		t.Fatalf("add dep: %v", err)
+	}
+
+	// Verify B is blocked before close.
+	all, _ := s.ListIssues(store.FilterOptions{})
+	g := graph.Build(all)
+	readyBefore := g.Ready()
+	readyBeforeIDs := idsOf(readyBefore)
+	if containsStr(readyBeforeIDs, b.ID) {
+		t.Errorf("B should be blocked before closing A: %v", readyBeforeIDs)
+	}
+
+	// Close A and cascade.
+	if err := s.CloseIssue(a.ID, "done"); err != nil {
+		t.Fatalf("close A: %v", err)
+	}
+	unblocked, err := s.ResolveDependentsOf(a.ID)
+	if err != nil {
+		t.Fatalf("cascade: %v", err)
+	}
+	if len(unblocked) != 1 || unblocked[0] != b.ID {
+		t.Errorf("expected B to be unblocked, got %v", unblocked)
+	}
+
+	// Verify B is now in the ready set.
+	all2, _ := s.ListIssues(store.FilterOptions{})
+	g2 := graph.Build(all2)
+	readyAfter := g2.Ready()
+	readyAfterIDs := idsOf(readyAfter)
+	if !containsStr(readyAfterIDs, b.ID) {
+		t.Errorf("B should be ready after closing A with cascade: %v", readyAfterIDs)
+	}
+
+	// Verify historical relationship preserved.
+	bRead, _ := s.ReadIssue(b.ID)
+	if len(bRead.BlockedBy) != 0 {
+		t.Errorf("B should have no active blockers: %v", bRead.BlockedBy)
+	}
+	if !containsStr(bRead.WasBlockedBy, a.ID) {
+		t.Errorf("B.WasBlockedBy should contain A: %v", bRead.WasBlockedBy)
+	}
+}
+
 func containsStr(ss []string, s string) bool {
 	for _, v := range ss {
 		if v == s {

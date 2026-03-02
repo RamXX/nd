@@ -10,7 +10,7 @@ This creates a bidirectional relationship:
 - B is added to A's `blocked_by` list
 - A is added to B's `blocks` list
 
-When B is closed, A becomes unblocked. If A has no other open blockers, it appears in `nd ready`.
+When B is closed, nd **automatically removes B from A's `blocked_by` list** (cascading unblock). If A has no other open blockers, it appears in `nd ready`. You do NOT need to manually run `nd dep rm` after closing a blocker -- the cascade handles it.
 
 ## Dependency Direction
 
@@ -88,13 +88,29 @@ All dependency changes are recorded in the `## History` section of both issues:
 
 This provides an audit trail of how dependencies evolved over time.
 
-## Removing Dependencies
+## Automatic Resolution on Close
+
+When you close an issue with `nd close`, all its dependents are automatically unblocked:
+
+```bash
+nd close B       # If B blocks A, A is automatically unblocked
+```
+
+Output:
+```
+Closed B
+  Unblocked A (was blocked by B)
+```
+
+The historical relationship is preserved in `was_blocked_by`. This eliminates the need to manually run `nd dep rm` after closing a blocker.
+
+## Removing Dependencies Manually
 
 ```bash
 nd dep rm A B    # A no longer depends on B
 ```
 
-Cleans both sides: removes B from A's `blocked_by` AND A from B's `blocks`.
+Cleans both sides: removes B from A's `blocked_by` AND A from B's `blocks`. This is only needed when removing a dependency without closing the blocker.
 
 ## Listing Dependencies
 

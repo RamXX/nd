@@ -1,7 +1,7 @@
 # CLI Command Reference
 
 **For:** AI agents and developers using the nd command-line interface
-**Version:** 0.6.1+
+**Version:** 0.8.0+
 
 ## Quick Navigation
 
@@ -141,6 +141,15 @@ nd close PROJ-a3f --start=PROJ-b7c                # Close and start next issue (
 
 # Reopen a closed issue
 nd reopen PROJ-a3f
+```
+
+**Auto-cascade on close**: When an issue is closed, nd automatically removes it from all dependents' `blocked_by` lists. This means you do NOT need to manually run `nd dep rm` after closing a blocker -- dependents are unblocked automatically. The historical relationship is preserved in `was_blocked_by`.
+
+Output example:
+```
+Closed PROJ-a3f
+  Unblocked PROJ-b7c (was blocked by PROJ-a3f)
+  Unblocked PROJ-c8d (was blocked by PROJ-a3f)
 ```
 
 When FSM is enabled, `nd close` requires the issue to be at the step immediately before `closed` in the sequence. `nd reopen` is always allowed.
@@ -514,6 +523,17 @@ Vault auto-discovery walks up the directory tree looking for `.vault/`.
 ### Custom Statuses
 
 Defined via `nd config set status.custom`. Custom statuses display with `diamond` icon and work in all commands.
+
+## Aliases (Hidden Commands)
+
+These commands don't appear in `nd --help` but work when called. They exist because agents frequently attempt these names:
+
+```bash
+nd resolve <issue> <dep>    # Alias for: nd dep rm <issue> <dep>
+nd unblock <issue> <dep>    # Alias for: nd dep rm <issue> <dep>
+nd block <issue> <dep>      # Alias for: nd dep add <issue> <dep>
+nd start <issue>            # Alias for: nd update <issue> --status=in_progress
+```
 
 ## Issue Types
 

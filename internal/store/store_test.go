@@ -1334,6 +1334,123 @@ func TestAddRelatedIdempotentNoExtraLinks(t *testing.T) {
 	}
 }
 
+func TestCloseResolvesBlockers(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Init(dir, "TST", "tester")
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	a, _ := s.CreateIssue("Blocker", "", "task", 2, "", nil, "")
+	b, _ := s.CreateIssue("Dependent", "", "task", 2, "", nil, "")
+
+	// B depends on A.
+	if err := s.AddDependency(b.ID, a.ID); err != nil {
+		t.Fatalf("add dep: %v", err)
+	}
+
+	// Close A.
+	if err := s.CloseIssue(a.ID, "done"); err != nil {
+		t.Fatalf("close A: %v", err)
+	}
+
+	// Cascade.
+	unblocked, err := s.ResolveDependentsOf(a.ID)
+	if err != nil {
+		t.Fatalf("ResolveDependentsOf: %v", err)
+	}
+	if len(unblocked) != 1 || unblocked[0] != b.ID {
+		t.Errorf("expected [%s], got %v", b.ID, unblocked)
+	}
+
+	// Verify B is unblocked.
+	bRead, _ := s.ReadIssue(b.ID)
+	if len(bRead.BlockedBy) != 0 {
+		t.Errorf("B should have no blockers: %v", bRead.BlockedBy)
+	}
+	if !contains(bRead.WasBlockedBy, a.ID) {
+		t.Errorf("B.WasBlockedBy should contain A: %v", bRead.WasBlockedBy)
+	}
+
+	// Verify A's blocks list is cleared.
+	aRead, _ := s.ReadIssue(a.ID)
+	if len(aRead.Blocks) != 0 {
+		t.Errorf("A should have empty blocks: %v", aRead.Blocks)
+	}
+
+	// Verify history entries.
+	if !strings.Contains(bRead.Body, "dep_removed: was_blocked_by "+a.ID) {
+		t.Errorf("B body should contain dep_removed history:\n%s", bRead.Body)
+	}
+	if !strings.Contains(aRead.Body, "dep_removed: no_longer_blocks "+b.ID) {
+		t.Errorf("A body should contain dep_removed history:\n%s", aRead.Body)
+	}
+}
+
+func TestCloseResolvesMultipleBlockers(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Init(dir, "TST", "tester")
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	a, _ := s.CreateIssue("Dependent", "", "task", 2, "", nil, "")
+	b, _ := s.CreateIssue("Blocker B", "", "task", 2, "", nil, "")
+	c, _ := s.CreateIssue("Blocker C", "", "task", 2, "", nil, "")
+
+	// A depends on B and C.
+	_ = s.AddDependency(a.ID, b.ID)
+	_ = s.AddDependency(a.ID, c.ID)
+
+	// Close B, cascade.
+	_ = s.CloseIssue(b.ID, "done")
+	unblocked, _ := s.ResolveDependentsOf(b.ID)
+	if len(unblocked) != 1 || unblocked[0] != a.ID {
+		t.Errorf("closing B should unblock A: got %v", unblocked)
+	}
+
+	// A should still be blocked by C.
+	aRead, _ := s.ReadIssue(a.ID)
+	if len(aRead.BlockedBy) != 1 || aRead.BlockedBy[0] != c.ID {
+		t.Errorf("A should still be blocked by C: %v", aRead.BlockedBy)
+	}
+
+	// Close C, cascade.
+	_ = s.CloseIssue(c.ID, "done")
+	unblocked2, _ := s.ResolveDependentsOf(c.ID)
+	if len(unblocked2) != 1 || unblocked2[0] != a.ID {
+		t.Errorf("closing C should unblock A: got %v", unblocked2)
+	}
+
+	// A should be fully unblocked.
+	aRead2, _ := s.ReadIssue(a.ID)
+	if len(aRead2.BlockedBy) != 0 {
+		t.Errorf("A should have no blockers: %v", aRead2.BlockedBy)
+	}
+	if !contains(aRead2.WasBlockedBy, b.ID) || !contains(aRead2.WasBlockedBy, c.ID) {
+		t.Errorf("A.WasBlockedBy should contain B and C: %v", aRead2.WasBlockedBy)
+	}
+}
+
+func TestCloseNoBlockersNoop(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Init(dir, "TST", "tester")
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	a, _ := s.CreateIssue("Standalone", "", "task", 2, "", nil, "")
+	_ = s.CloseIssue(a.ID, "done")
+
+	unblocked, err := s.ResolveDependentsOf(a.ID)
+	if err != nil {
+		t.Fatalf("ResolveDependentsOf: %v", err)
+	}
+	if len(unblocked) != 0 {
+		t.Errorf("expected no unblocked issues, got %v", unblocked)
+	}
+}
+
 func TestDepRemoveAppendsHistory(t *testing.T) {
 	dir := t.TempDir()
 	s, err := Init(dir, "TST", "tester")

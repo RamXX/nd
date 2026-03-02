@@ -420,13 +420,26 @@ nd close <id> [id...] [--reason="explanation"] [--suggest-next] [--start=<next-i
 nd reopen <id>
 ```
 
-Close accepts multiple IDs for batch operations. Closing sets `closed_at` and optionally `close_reason`. Reopening clears both and sets status to `open`.
+Close accepts multiple IDs for batch operations. Closing sets `closed_at` and optionally `close_reason`, then **automatically removes the closed issue from all dependents' `blocked_by` lists** (cascading unblock). Reopening clears both and sets status to `open`.
 
 `--start` transitions another issue to `in_progress` after closing, triggering auto-follows detection to link the execution chain.
 
 When FSM is enabled, `nd close` requires the issue to be at the step immediately before `closed` in the sequence. `nd reopen` is always allowed.
 
 `--suggest-next` shows the next ready issue after closing.
+
+### Aliases
+
+These hidden commands are available as shortcuts for common operations:
+
+```bash
+nd resolve <issue> <dep>    # Alias for: nd dep rm <issue> <dep>
+nd unblock <issue> <dep>    # Alias for: nd dep rm <issue> <dep>
+nd block <issue> <dep>      # Alias for: nd dep add <issue> <dep>
+nd start <issue>            # Alias for: nd update <issue> --status=in_progress
+```
+
+These don't appear in `nd --help` but work when called directly.
 
 ### Deferring
 

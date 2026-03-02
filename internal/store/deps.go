@@ -177,6 +177,26 @@ func (s *Store) RemoveRelated(issueID, relatedID string) error {
 	return nil
 }
 
+// ResolveDependentsOf removes the closed issue from the blocked_by lists of all
+// issues it blocks. Returns the list of issue IDs that were unblocked.
+// Individual removal errors are logged but do not fail the cascade.
+func (s *Store) ResolveDependentsOf(id string) ([]string, error) {
+	issue, err := s.ReadIssue(id)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", id, err)
+	}
+
+	var unblocked []string
+	for _, blockedID := range issue.Blocks {
+		if err := s.RemoveDependency(blockedID, id); err != nil {
+			// Log but don't fail -- best-effort cascade.
+			continue
+		}
+		unblocked = append(unblocked, blockedID)
+	}
+	return unblocked, nil
+}
+
 func remove(ss []string, s string) []string {
 	var result []string
 	for _, v := range ss {

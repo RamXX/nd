@@ -33,6 +33,17 @@ var closeCmd = &cobra.Command{
 			if !quiet {
 				fmt.Printf("Closed %s\n", id)
 			}
+
+			// Cascade: remove this issue from dependents' blocked_by lists.
+			unblocked, err := s.ResolveDependentsOf(id)
+			if err != nil {
+				errorf("cascade %s: %v", id, err)
+			}
+			if !quiet {
+				for _, uid := range unblocked {
+					fmt.Printf("  Unblocked %s (was blocked by %s)\n", uid, id)
+				}
+			}
 		}
 
 		if len(errors) > 0 {
