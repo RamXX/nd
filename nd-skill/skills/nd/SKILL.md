@@ -5,7 +5,7 @@ description: >
   Use for multi-session work, dependency tracking, and persistent context that
   survives conversation compaction. No database server. No size limits. Git-native.
 allowed-tools: "Read,Bash(nd:*)"
-version: "0.6.1"
+version: "0.8.0"
 author: "Ramiro Salas <https://github.com/RamXX>"
 license: "Apache-2.0"
 ---
@@ -66,9 +66,9 @@ Essential commands: `nd ready`, `nd create`, `nd show`, `nd update`, `nd close`,
 
 1. `nd ready` -- Find unblocked work
 2. `nd show <id>` -- Get full context
-3. `nd update <id> --status=in_progress` -- Claim work
+3. `nd start <id>` -- Claim work (alias for `nd update <id> --status=in_progress`)
 4. Work. Add notes as you go: `nd update <id> --append-notes "..."`
-5. `nd close <id> --reason="..."` -- Complete task
+5. `nd close <id> --reason="..."` -- Complete task (auto-unblocks dependents)
 6. `git push` -- Sync to remote (issues are files in git)
 
 ## Storage
@@ -91,6 +91,7 @@ For the full storage format specification, see [STORAGE.md](resources/STORAGE.md
 | FSM enforcement | `nd config set status.fsm true` | [CLI_REFERENCE.md](resources/CLI_REFERENCE.md) |
 | Defer work | `nd defer/undefer` | [CLI_REFERENCE.md](resources/CLI_REFERENCE.md) |
 | Statistics | `nd stats`, `nd count` | [CLI_REFERENCE.md](resources/CLI_REFERENCE.md) |
+| Aliases | `nd start`, `nd block`, `nd resolve`, `nd unblock` | [CLI_REFERENCE.md](resources/CLI_REFERENCE.md) |
 | Search | `nd search "query"` | -- |
 | Health | `nd doctor [--fix]` | [TROUBLESHOOTING.md](resources/TROUBLESHOOTING.md) |
 | AI context | `nd prime [--json]` | -- |
