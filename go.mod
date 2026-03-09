@@ -1,6 +1,6 @@
 module github.com/RamXX/nd
 
-go 1.25.0
+go 1.26.1
 
 require (
 	github.com/RamXX/vlt v0.8.1
