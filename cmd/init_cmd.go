@@ -15,6 +15,7 @@ var initCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		prefix, _ := cmd.Flags().GetString("prefix")
 		author, _ := cmd.Flags().GetString("author")
+		trackIssues, _ := cmd.Flags().GetBool("track-issues")
 		dir := resolveVaultDir()
 
 		if prefix == "" {
@@ -41,7 +42,7 @@ var initCmd = &cobra.Command{
 			return fmt.Errorf("vault already initialized at %s", dir)
 		}
 
-		s, err := store.Init(dir, prefix, author)
+		s, err := store.Init(dir, prefix, author, store.InitOptions{TrackIssues: trackIssues})
 		if err != nil {
 			return err
 		}
@@ -55,5 +56,6 @@ var initCmd = &cobra.Command{
 func init() {
 	initCmd.Flags().String("prefix", "", "issue ID prefix (required)")
 	initCmd.Flags().String("author", "", "default author (defaults to OS user)")
+	initCmd.Flags().Bool("track-issues", false, "keep .nd.yaml and issues/ git-tracked instead of ignored")
 	rootCmd.AddCommand(initCmd)
 }

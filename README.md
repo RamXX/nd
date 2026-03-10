@@ -264,14 +264,14 @@ Spike complete. Chose Authorization Code flow over Implicit.
 Started implementation. Base models done.
 ```
 
-Every issue is a file you can read with `cat`, search with `grep`, diff with `git diff`, and edit with any text editor. No database required.
+Every issue is a file you can read with `cat`, search with `grep`, and edit with any text editor. In tracked mode you can also diff issue changes with `git diff`. In the default local mode, use `nd archive` when you want a git-committable snapshot. No database required.
 
 ### Vault Layout
 
 ```
 .vault/
-  .nd.yaml            # Config: version, prefix, statuses, FSM rules
-  issues/             # One .md file per issue
+  .nd.yaml            # Config: version, prefix, statuses, FSM rules (tracked when using --track-issues)
+  issues/             # One .md file per issue (tracked when using --track-issues)
     PROJ-a3f8.md
     PROJ-b7c2.md
     PROJ-d9e1.md
@@ -287,6 +287,7 @@ Every issue is a file you can read with `cat`, search with `grep`, diff with `gi
 version: "1"
 prefix: PROJ
 created_by: alice
+track_issues: true
 status_custom: "review,qa,rejected"
 status_sequence: "open,in_progress,review,qa,closed"
 status_fsm: true
@@ -300,10 +301,12 @@ Manage it via `nd config set/get/list` or edit directly.
 ### Initialization
 
 ```bash
-nd init --prefix=PROJ [--vault=PATH] [--author=NAME]
+nd init --prefix=PROJ [--vault=PATH] [--author=NAME] [--track-issues]
 ```
 
 Creates the vault directory structure and `.nd.yaml` config. Prefix is required -- it becomes part of every issue ID (e.g., `PROJ-a3f8`).
+
+By default, `nd` ignores live issue files and `.nd.yaml`, which keeps the mutable tracker local and makes `nd archive` the git-friendly export path. Use `--track-issues` to keep `.nd.yaml` and `issues/` in git for repos that want markdown issues to be the tracked system of record.
 
 ### Configuration
 

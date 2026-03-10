@@ -13,28 +13,35 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// gitignoreEntries are the lines that must appear in the vault's .gitignore.
+// gitignoreEntries returns the lines that must appear in the vault's .gitignore.
 // Blank lines and comments are included for readability.
-var gitignoreEntries = []string{
-	"# nd runtime state -- do not track",
-	"# Issues are the system of record; use `nd archive` for git-committable snapshots",
-	".nd.yaml",
-	".vlt.lock",
-	".trash/",
-	"issues/",
-	".guard/",
-	".piv-loop-state.json",
-	".piv-loop-snapshot.json",
-	".dispatcher-state.json",
+func gitignoreEntries(trackIssues bool) []string {
+	entries := []string{
+		"# nd runtime state -- do not track",
+	}
+	if trackIssues {
+		entries = append(entries, "# Tracked mode keeps .nd.yaml and issues/ in git")
+	} else {
+		entries = append(entries, "# Default mode keeps .nd.yaml and issues/ local; use `nd init --track-issues` to track them in git")
+		entries = append(entries, ".nd.yaml", "issues/")
+	}
+	return append(entries,
+		".vlt.lock",
+		".trash/",
+		".guard/",
+		".piv-loop-state.json",
+		".piv-loop-snapshot.json",
+		".dispatcher-state.json",
+	)
 }
 
 // EnsureGitignore idempotently adds any missing entries to the vault's .gitignore.
 // It creates the file if it does not exist. Safe to call on every Open.
 func (s *Store) EnsureGitignore() error {
-	return ensureGitignore(s.dir)
+	return ensureGitignore(s.dir, s.config.TrackIssues)
 }
 
-func ensureGitignore(dir string) error {
+func ensureGitignore(dir string, trackIssues bool) error {
 	path := filepath.Join(dir, ".gitignore")
 
 	existing := make(map[string]bool)
@@ -53,7 +60,7 @@ func ensureGitignore(dir string) error {
 	}
 
 	var missing []string
-	for _, entry := range gitignoreEntries {
+	for _, entry := range gitignoreEntries(trackIssues) {
 		if !existing[entry] {
 			missing = append(missing, entry)
 		}
@@ -87,10 +94,15 @@ type Config struct {
 	Version         string `yaml:"version"`
 	Prefix          string `yaml:"prefix"`
 	CreatedBy       string `yaml:"created_by"`
+	TrackIssues     bool   `yaml:"track_issues,omitempty"`
 	StatusCustom    string `yaml:"status_custom,omitempty"`
 	StatusSequence  string `yaml:"status_sequence,omitempty"`
 	StatusFSM       bool   `yaml:"status_fsm,omitempty"`
 	StatusExitRules string `yaml:"status_exit_rules,omitempty"`
+}
+
+type InitOptions struct {
+	TrackIssues bool
 }
 
 // Store wraps a vlt.Vault with issue-tracker operations.
@@ -135,7 +147,12 @@ func (s *Store) Close() {
 }
 
 // Init creates a new nd vault at dir.
-func Init(dir, prefix, author string) (*Store, error) {
+func Init(dir, prefix, author string, opts ...InitOptions) (*Store, error) {
+	var initOpts InitOptions
+	if len(opts) > 0 {
+		initOpts = opts[0]
+	}
+
 	// Create vault directory structure.
 	for _, sub := range []string{"issues", ".trash"} {
 		if err := os.MkdirAll(filepath.Join(dir, sub), 0o755); err != nil {
@@ -143,16 +160,12 @@ func Init(dir, prefix, author string) (*Store, error) {
 		}
 	}
 
-	// Write .gitignore (idempotent -- appends to any existing file).
-	if err := ensureGitignore(dir); err != nil {
-		return nil, fmt.Errorf("write .gitignore: %w", err)
-	}
-
 	// Write config.
 	cfg := Config{
-		Version:   "1",
-		Prefix:    prefix,
-		CreatedBy: author,
+		Version:     "1",
+		Prefix:      prefix,
+		CreatedBy:   author,
+		TrackIssues: initOpts.TrackIssues,
 	}
 	data, err := yaml.Marshal(cfg)
 	if err != nil {
@@ -160,6 +173,11 @@ func Init(dir, prefix, author string) (*Store, error) {
 	}
 	if err := os.WriteFile(filepath.Join(dir, ".nd.yaml"), data, 0o644); err != nil {
 		return nil, fmt.Errorf("write config: %w", err)
+	}
+
+	// Write .gitignore (idempotent -- appends to any existing file).
+	if err := ensureGitignore(dir, cfg.TrackIssues); err != nil {
+		return nil, fmt.Errorf("write .gitignore: %w", err)
 	}
 
 	v, err := vlt.Open(dir)

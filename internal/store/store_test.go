@@ -9,6 +9,14 @@ import (
 	"github.com/RamXX/nd/internal/model"
 )
 
+func gitignoreLineSet(content string) map[string]bool {
+	lines := make(map[string]bool)
+	for _, line := range strings.Split(content, "\n") {
+		lines[strings.TrimSpace(line)] = true
+	}
+	return lines
+}
+
 func TestInit_CreatesGitignore(t *testing.T) {
 	dir := t.TempDir()
 
@@ -23,8 +31,9 @@ func TestInit_CreatesGitignore(t *testing.T) {
 	}
 
 	content := string(data)
-	for _, entry := range gitignoreEntries {
-		if !strings.Contains(content, entry) {
+	lines := gitignoreLineSet(content)
+	for _, entry := range gitignoreEntries(false) {
+		if !lines[entry] {
 			t.Errorf(".gitignore missing entry %q", entry)
 		}
 	}
@@ -92,25 +101,85 @@ func TestEnsureGitignore_AppendsToExisting(t *testing.T) {
 	}
 
 	content := string(data)
+	lines := gitignoreLineSet(content)
 	// Original entries must still be there.
-	if !strings.Contains(content, "# custom user entry") {
+	if !lines["# custom user entry"] {
 		t.Error("original custom entry should be preserved")
 	}
-	if !strings.Contains(content, "*.log") {
+	if !lines["*.log"] {
 		t.Error("original *.log entry should be preserved")
 	}
 
 	// All required entries must be present.
-	for _, entry := range gitignoreEntries {
-		if !strings.Contains(content, entry) {
+	for _, entry := range gitignoreEntries(false) {
+		if !lines[entry] {
 			t.Errorf("missing entry %q after EnsureGitignore", entry)
 		}
 	}
 
 	// .nd.yaml should not be duplicated (it was in the partial).
-	count := strings.Count(content, ".nd.yaml")
+	count := 0
+	for _, line := range strings.Split(content, "\n") {
+		if strings.TrimSpace(line) == ".nd.yaml" {
+			count++
+		}
+	}
 	if count != 1 {
-		t.Errorf(".nd.yaml should appear exactly once, got %d", count)
+		t.Errorf(".nd.yaml ignore entry should appear exactly once, got %d", count)
+	}
+}
+
+func TestInit_TrackIssuesKeepsIssuesAndConfigTracked(t *testing.T) {
+	dir := t.TempDir()
+
+	_, err := Init(dir, "TST", "tester", InitOptions{TrackIssues: true})
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, ".gitignore"))
+	if err != nil {
+		t.Fatalf("read .gitignore: %v", err)
+	}
+
+	content := string(data)
+	lines := gitignoreLineSet(content)
+	for _, entry := range gitignoreEntries(true) {
+		if !lines[entry] {
+			t.Errorf(".gitignore missing tracked-mode entry %q", entry)
+		}
+	}
+	if lines["issues/"] {
+		t.Error("tracked mode should not ignore issues/")
+	}
+	if lines[".nd.yaml"] {
+		t.Error("tracked mode should not ignore .nd.yaml")
+	}
+
+	cfg, err := os.ReadFile(filepath.Join(dir, ".nd.yaml"))
+	if err != nil {
+		t.Fatalf("read .nd.yaml: %v", err)
+	}
+	if !strings.Contains(string(cfg), "track_issues: true") {
+		t.Error("tracked mode should persist track_issues: true in .nd.yaml")
+	}
+
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+
+	after, err := os.ReadFile(filepath.Join(dir, ".gitignore"))
+	if err != nil {
+		t.Fatalf("read .gitignore after open: %v", err)
+	}
+	afterLines := gitignoreLineSet(string(after))
+	if afterLines["issues/"] {
+		t.Error("Open should not re-add issues/ ignore entry in tracked mode")
+	}
+	if afterLines[".nd.yaml"] {
+		t.Error("Open should not re-add .nd.yaml ignore entry in tracked mode")
 	}
 }
 
