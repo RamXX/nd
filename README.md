@@ -69,10 +69,10 @@ nd adds: issue model with validation, collision-resistant ID generation, depende
 git clone https://github.com/RamXX/nd.git
 cd nd
 make build
-make install    # Installs to ~/.local/bin/nd
+make install    # Installs to ~/go/bin/nd
 ```
 
-Requires Go 1.22+.
+Requires Go 1.26+.
 
 ## Quick Start
 
@@ -213,7 +213,16 @@ When importing from beads JSONL, original IDs are preserved verbatim.
 
 ## Storage Format
 
-Issues live as markdown files in `.vault/issues/`:
+Issues live as markdown files in `<vault>/issues/`, where `<vault>` is resolved by `nd`:
+
+- `--vault PATH` wins when provided
+- otherwise `ND_VAULT_DIR` wins when set
+- in normal repos, nd walks up from the current directory and uses the nearest `.vault/`
+- in Paivot-managed repos, nd uses the repository's git common dir and resolves the live vault to `$(git rev-parse --git-common-dir)/paivot/nd-vault`
+
+That Paivot behavior is intentional: it keeps the live backlog branch-independent across worktrees.
+
+Example issue file:
 
 ```yaml
 ---
@@ -268,6 +277,8 @@ Every issue is a file you can read with `cat`, search with `grep`, and edit with
 
 ### Vault Layout
 
+Typical local layout:
+
 ```
 .vault/
   .nd.yaml            # Config: version, prefix, statuses, FSM rules (tracked when using --track-issues)
@@ -277,6 +288,18 @@ Every issue is a file you can read with `cat`, search with `grep`, and edit with
     PROJ-d9e1.md
   .trash/             # Soft-deleted issues
   .vlt.lock           # Advisory file lock
+```
+
+Paivot-managed worktrees instead keep the live nd vault under the repo's git common dir:
+
+```text
+<git-common-dir>/
+  paivot/
+    nd-vault/
+      .nd.yaml
+      issues/
+      .trash/
+      .vlt.lock
 ```
 
 ### Configuration File
@@ -304,7 +327,9 @@ Manage it via `nd config set/get/list` or edit directly.
 nd init --prefix=PROJ [--vault=PATH] [--author=NAME] [--track-issues]
 ```
 
-Creates the vault directory structure and `.nd.yaml` config. Prefix is required -- it becomes part of every issue ID (e.g., `PROJ-a3f8`).
+Creates the resolved vault directory structure and `.nd.yaml` config. Prefix is required -- it becomes part of every issue ID (e.g., `PROJ-a3f8`).
+
+If you do not pass `--vault`, `nd init` uses the same vault resolution rules described above. In a Paivot-managed repo, that means initialization happens in the shared git-common-dir vault, not in a branch-local `.vault/`.
 
 By default, `nd` ignores live issue files and `.nd.yaml`, which keeps the mutable tracker local and makes `nd archive` the git-friendly export path. Use `--track-issues` to keep `.nd.yaml` and `issues/` in git for repos that want markdown issues to be the tracked system of record.
 
@@ -597,11 +622,13 @@ Soft-deletes to `.trash/` by default. `--permanent` removes the file entirely. C
 All commands support:
 
 ```
---vault PATH    Override vault directory (default: .vault, auto-discovered)
+--vault PATH    Override vault directory explicitly
 --json          Output as JSON
 --verbose       Verbose output
 --quiet         Suppress non-essential output
 ```
+
+`ND_VAULT_DIR` provides the same override via environment variable. Without either override, nd auto-discovers the nearest local `.vault/`, except in Paivot-managed repos where it resolves the shared git-common-dir vault.
 
 ## Priority System
 
