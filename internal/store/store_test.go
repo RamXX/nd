@@ -798,6 +798,45 @@ func TestFSMBlockedExitWithoutRules(t *testing.T) {
 	}
 }
 
+func TestFSMUndeferUsesConfiguredResumeStatus(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Init(dir, "TST", "tester")
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	if err := s.SetConfigValue("status.custom", "delivered,accepted,rejected"); err != nil {
+		t.Fatalf("set custom: %v", err)
+	}
+	if err := s.SetConfigValue("status.sequence", "open,in_progress,delivered,accepted,closed"); err != nil {
+		t.Fatalf("set sequence: %v", err)
+	}
+	if err := s.SetConfigValue("status.exit_rules", "deferred:in_progress"); err != nil {
+		t.Fatalf("set exit rules: %v", err)
+	}
+	if err := s.SetConfigValue("status.fsm", "true"); err != nil {
+		t.Fatalf("enable fsm: %v", err)
+	}
+
+	issue, _ := s.CreateIssue("Test", "", "task", 2, "", nil, "")
+	if err := s.UpdateStatus(issue.ID, "in_progress"); err != nil {
+		t.Fatalf("move to in_progress: %v", err)
+	}
+	if err := s.DeferIssue(issue.ID, ""); err != nil {
+		t.Fatalf("defer issue: %v", err)
+	}
+	if err := s.UnDeferIssue(issue.ID); err != nil {
+		t.Fatalf("undefer issue: %v", err)
+	}
+
+	got, err := s.ReadIssue(issue.ID)
+	if err != nil {
+		t.Fatalf("read issue: %v", err)
+	}
+	if got.Status != model.StatusInProgress {
+		t.Fatalf("undefer should resume to in_progress, got %s", got.Status)
+	}
+}
+
 func TestFSMBlockedEntry(t *testing.T) {
 	dir := t.TempDir()
 	s := setupFSMStore(t, dir)

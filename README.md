@@ -475,7 +475,9 @@ nd defer <id> [--until=YYYY-MM-DD]
 nd undefer <id>
 ```
 
-Deferring sets status to `deferred` with an optional target date. Undefer restores to `open`.
+Deferring sets status to `deferred` with an optional target date. `nd undefer`
+restores to `open` by default, or to the first FSM-allowed deferred exit target
+when `status.fsm` and `status.exit_rules` specify a different resume state.
 
 ### Dependencies
 

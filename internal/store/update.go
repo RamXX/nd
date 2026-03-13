@@ -218,6 +218,11 @@ func (s *Store) DeferIssue(id, until string) error {
 	if issue.Status == model.StatusClosed {
 		return fmt.Errorf("cannot defer closed issue %s", id)
 	}
+	if s.config.StatusFSM {
+		if err := s.validateFSMTransition(issue.Status, model.StatusDeferred); err != nil {
+			return err
+		}
+	}
 
 	if err := s.vault.PropertySet(id, "status", "deferred"); err != nil {
 		return err
@@ -243,15 +248,21 @@ func (s *Store) UnDeferIssue(id string) error {
 	if issue.Status != model.StatusDeferred {
 		return fmt.Errorf("issue %s is not deferred (status: %s)", id, issue.Status)
 	}
+	targetStatus := s.resumeStatusFromDeferred()
+	if s.config.StatusFSM {
+		if err := s.validateFSMTransition(issue.Status, targetStatus); err != nil {
+			return err
+		}
+	}
 
-	if err := s.vault.PropertySet(id, "status", "open"); err != nil {
+	if err := s.vault.PropertySet(id, "status", string(targetStatus)); err != nil {
 		return err
 	}
 	_ = s.vault.PropertyRemove(id, "defer_until")
 	if err := s.touchUpdatedAt(id); err != nil {
 		return err
 	}
-	_ = s.appendHistory(id, "status: deferred -> open")
+	_ = s.appendHistory(id, fmt.Sprintf("status: deferred -> %s", targetStatus))
 	return nil
 }
 
@@ -311,6 +322,18 @@ func indexInSequence(seq []model.Status, st model.Status) int {
 		}
 	}
 	return -1
+}
+
+func (s *Store) resumeStatusFromDeferred() model.Status {
+	if targets, ok := s.ExitRules()[model.StatusDeferred]; ok && len(targets) > 0 {
+		for _, target := range targets {
+			if target == model.StatusOpen {
+				return model.StatusOpen
+			}
+		}
+		return targets[0]
+	}
+	return model.StatusOpen
 }
 
 // appendHistory appends a timestamped entry to the ## History section of an issue.

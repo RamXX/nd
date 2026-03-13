@@ -9,7 +9,7 @@ import (
 
 var undeferCmd = &cobra.Command{
 	Use:   "undefer <id>",
-	Short: "Restore a deferred issue to open",
+	Short: "Restore a deferred issue to its configured resume status",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		id := args[0]
