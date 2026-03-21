@@ -56,11 +56,11 @@ var invalidFlagsForNonArchive = map[string]string{
 	"--output": "Only nd archive supports --output. For other commands, use --json for JSON output.",
 }
 
-// ndCmdPattern matches `nd <subcommand>` in various contexts:
+// ndCmdPattern matches `nd <subcommand>` in command position:
 // bare command, after pipes/&&/;/$(), or after another command like `pvg nd`.
-// Requires a non-word char (or start of string) before "nd" to avoid matching
-// words like "find", "and", "send".
-var ndCmdPattern = regexp.MustCompile(`(?:^|[^a-zA-Z])nd\s+(\S+)`)
+// Requires whitespace or start-of-string before "nd" to avoid matching
+// "nd" inside paths (e.g., /workspace/nd) or words (find, and, send).
+var ndCmdPattern = regexp.MustCompile(`(?:^|[\s;|&(])nd\s+(\S+)`)
 
 // ndFlagPattern matches `nd ... --flag` patterns
 var ndFlagPattern = regexp.MustCompile(`nd\s+[^|;&]*?(--\S+)`)
